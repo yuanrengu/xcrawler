@@ -16,7 +16,15 @@ X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
 CACHE_DIR = "cache"
 MAX_PAGES = 10  # Free 账号：每天只抓10页（1000条），避免超限
-TARGET_YEAR = 2024  # 目标年份
+
+# 从环境变量读取目标日期，默认为2024-01-01
+target_date_str = os.getenv("TARGET_DATE", "2024-01-01")
+try:
+    TARGET_DATE = datetime.strptime(target_date_str, "%Y-%m-%d")
+except ValueError:
+    print(f"⚠️ TARGET_DATE 格式错误: {target_date_str}，使用默认值: 2024-01-01")
+    TARGET_DATE = datetime(2024, 1, 1)
+
 REQUEST_INTERVAL = 3  # 每次请求间隔3秒，更保守
 
 HEADERS = {
@@ -43,7 +51,7 @@ def fetch_more_tweets(user_id, until_id=None):
         params["until_id"] = until_id  # 从指定推文ID之前开始
     
     all_tweets = []
-    reached_2024 = False
+    reached_target = False
     
     print(f"🚀 开始抓取历史推文...")
     if until_id:
@@ -75,13 +83,13 @@ def fetch_more_tweets(user_id, until_id=None):
             
             all_tweets.extend(page_tweets)
             
-            # 检查是否已到达2024年
+            # 检查是否已到达目标日期（2024年1月1日）
             oldest_date = datetime.strptime(page_tweets[-1]["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
             print(f"📄 第 {page + 1} 页: {len(page_tweets)}条 | 最早: {oldest_date.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
             
-            if oldest_date.year <= TARGET_YEAR:
-                reached_2024 = True
-                print(f"✅ 已到达 {TARGET_YEAR} 年数据！")
+            if oldest_date <= TARGET_DATE:
+                reached_target = True
+                print(f"✅ 已到达目标日期 {TARGET_DATE.strftime('%Y-%m-%d')}！")
                 break
             
             # 检查剩余配额
@@ -105,12 +113,12 @@ def fetch_more_tweets(user_id, until_id=None):
             print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
             break
     
-    return all_tweets, reached_2024
+    return all_tweets, reached_target
 
 def main():
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
-    print(f"📅 目标: 抓取到 {TARGET_YEAR} 年的数据")
+    print(f"📅 目标: 抓取到 {TARGET_DATE.strftime('%Y-%m-%d')} 或最早推文")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60 + "\n")
     
@@ -129,9 +137,12 @@ def main():
         print(f"📍 最早推文时间: {oldest_date.strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"📍 最早推文 ID: {oldest_id}\n")
         
-        if oldest_date.year <= TARGET_YEAR:
-            print(f"✅ 已有 {TARGET_YEAR} 年数据，无需继续抓取")
+        # 判断是否需要继续抓取
+        if oldest_date <= TARGET_DATE:
+            print(f"✅ 已有 {TARGET_DATE.strftime('%Y-%m-%d')} 或更早的数据，无需继续抓取")
             return
+        else:
+            print(f"📈 最早推文在 {TARGET_DATE.strftime('%Y-%m-%d')} 之后，继续抓取历史数据\n")
     else:
         print(f"⚠️ 未找到现有数据文件，将从头开始抓取\n")
         existing_tweets = []
@@ -143,7 +154,7 @@ def main():
     print(f"✅ 用户 ID: {user_id}\n")
     
     # 抓取更多历史推文
-    new_tweets, reached_2024 = fetch_more_tweets(user_id, until_id=oldest_id)
+    new_tweets, reached_target = fetch_more_tweets(user_id, until_id=oldest_id)
     
     if new_tweets:
         print(f"\n📊 本次抓取: {len(new_tweets)} 条新推文")
@@ -178,10 +189,15 @@ def main():
             json.dump(all_tweets, f, ensure_ascii=False, indent=2)
         print(f"\n💾 已保存至: {raw_file}")
         
-        if reached_2024:
-            print(f"\n✅ 成功！已获取 {TARGET_YEAR} 年的数据")
+        # 判断抓取结果
+        earliest_date = dates[0]
+        if reached_target:
+            print(f"\n✅ 成功！已抓取到 {TARGET_DATE.strftime('%Y-%m-%d')} 的数据")
+        elif earliest_date <= TARGET_DATE:
+            print(f"\n✅ 成功！已抓取到 {earliest_date.strftime('%Y-%m-%d')}（早于目标日期）")
         else:
-            print(f"\n⚠️ 未完全达到 {TARGET_YEAR} 年，可能需要再次运行或增加 MAX_PAGES")
+            print(f"\n⚠️ 未完全达到目标日期，最早推文: {earliest_date.strftime('%Y-%m-%d')}")
+            print(f"💡 可能原因：用户在 {TARGET_DATE.strftime('%Y-%m-%d')} 之前没有推文，或需要增加 MAX_PAGES")
     else:
         print(f"\n⚠️ 未抓取到新推文")
     

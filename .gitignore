@@ -7,9 +7,9 @@ cache/
 cache_backup/
 
 # 环境变量文件（包含API密钥等敏感信息）
-# .env
-# .env.local
-# .env.*.local
+.env
+.env.local
+.env.*.local
 
 # ======================
 # Python 相关

@@ -138,9 +138,35 @@ try:
     
     if 2024 in years:
         print('✅ 成功获取2024年数据！')
+        # 从环境变量读取目标日期
+        import os
+        target_date_str = os.getenv('TARGET_DATE', '2024-01-01')
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d')
+        except ValueError:
+            target_date = datetime(2024, 1, 1)
+        
+        # 检查是否达到目标日期
+        earliest_2024 = min([d for d in dates if d.year == 2024])
+        if earliest_2024 <= target_date:
+            print(f'🎯 已达到目标日期：{target_date.date()}')
+        else:
+            print(f'📅 最早2024年推文：{earliest_2024.date()}')
     else:
-        print('⚠️  仍未获取到2024年数据，可能用户2024年未发推文')
-        print('💡 或者需要增加 MAX_PAGES 到更大值（如50）')
+        print('⚠️  仍未获取到2024年数据')
+        earliest_date = dates[0]
+        # 从环境变量读取目标日期
+        import os
+        target_date_str = os.getenv('TARGET_DATE', '2024-01-01')
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d')
+        except ValueError:
+            target_date = datetime(2024, 1, 1)
+            
+        if earliest_date <= target_date:
+            print(f'✅ 但已达到目标日期：{earliest_date.date()} ≤ {target_date.date()}')
+        else:
+            print(f'💡 可能用户在{target_date.date()}之前没有推文，或需要增加 MAX_PAGES')
     
 except Exception as e:
     print(f'❌ 数据分析失败: {e}')
