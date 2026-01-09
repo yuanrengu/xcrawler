@@ -8,7 +8,7 @@ from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter
 import langdetect
 from langdetect import detect
@@ -105,30 +105,17 @@ def deepseek_translate(text: str, use_cache: bool = True) -> str | None:
             translation_cache[text] = text
         return text
     
-    # 如果不是日语或英语，跳过翻译
-    if detected_lang not in ["ja", "en"]:
-        print(f"⚠️ 跳过未支持的语言: {detected_lang}")
-        return None
-    
-    # 根据检测到的语言设置提示词
-    if detected_lang == "ja":
-        lang_name = "日语"
-        source_lang = "Japanese"
-    elif detected_lang == "en":
-        lang_name = "英语"
-        source_lang = "English"
-    else:
-        return None
+    # 如果不是日语或英语，也尝试翻译（通用模式）
     
     prompt = f"""
-你是一名专业的{source_lang}到中文翻译。
-请将以下{lang_name}推文翻译成自然、准确的简体中文：
+你是一名专业的翻译专家。
+请将以下推文（检测到的语言代码：{detected_lang}）翻译成自然、准确的简体中文：
 - 保留技术术语和专有名词
 - 保持原文的语气和风格
 - 不要解释或扩写
 - 如果是网络用语或梗，请翻译成对应的中文网络用语
 
-{lang_name}原文：
+原文：
 {text}
 """
     
