@@ -280,6 +280,13 @@ TARGET_USERNAME=MiracleHe
 
 # 增量抓取目标日期（格式：YYYY-MM-DD，抓取到此日期或最早推文为止）
 TARGET_DATE=2024-01-01
+
+# 时区偏移（UTC+N），默认为9（日本/韩国），中国请设为8
+TIMEZONE_OFFSET=9
+
+# DeepSeek API 配置 (可选，默认值如下)
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
 ```
 
 **获取方式：**

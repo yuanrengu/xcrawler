@@ -20,7 +20,8 @@ _ = load_dotenv()
 # ======================
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取，默认 MiracleHe
 MAX_PAGES = 50                      # 控制抓取数量（50*100 = 5000 条，覆盖更长时间）
@@ -123,7 +124,7 @@ def deepseek_translate(text: str, use_cache: bool = True) -> str | None:
     for attempt in range(MAX_RETRIES):
         try:
             r = ds_client.chat.completions.create(
-                model="deepseek-chat",
+                model=LLM_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0
             )
@@ -165,7 +166,7 @@ def deepseek_profile_summary(cluster_text):
     for attempt in range(MAX_RETRIES):
         try:
             r = ds_client.chat.completions.create(
-                model="deepseek-chat",
+                model=LLM_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3
             )

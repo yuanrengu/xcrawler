@@ -15,7 +15,8 @@ _ = load_dotenv()
 # 配置
 # ======================
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
 CACHE_DIR = "cache"
 
@@ -53,7 +54,7 @@ def deepseek_profile_summary(cluster_text):
 """
     
     r = ds_client.chat.completions.create(
-        model="deepseek-chat",
+        model=LLM_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.3
     )

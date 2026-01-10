@@ -24,7 +24,8 @@ CACHE_DIR = "cache"
 
 if AI_AVAILABLE:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-    DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
     ds_client = OpenAI(
         api_key=DEEPSEEK_API_KEY,
         base_url=DEEPSEEK_BASE_URL
@@ -144,7 +145,7 @@ def detect_life_events(translated_data):
     
     try:
         r = ds_client.chat.completions.create(
-            model="deepseek-chat",
+            model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
@@ -191,7 +192,7 @@ def generate_behavior_summary(time_analysis, life_events):
     
     try:
         r = ds_client.chat.completions.create(
-            model="deepseek-chat",
+            model=LLM_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
