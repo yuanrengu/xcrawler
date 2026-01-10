@@ -32,8 +32,9 @@ if AI_AVAILABLE:
 
 def analyze_time_patterns(raw_tweets):
     """分析发推时间模式"""
-    # UTC+9 日本时间偏移
-    JST_OFFSET = timedelta(hours=9)
+    # UTC+N 时区偏移，默认+9 (日本/韩国)
+    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
+    JST_OFFSET = timedelta(hours=tz_offset)
     
     hour_counts = Counter()
     weekday_counts = Counter()

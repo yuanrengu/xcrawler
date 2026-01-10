@@ -117,7 +117,7 @@ def main():
     # 4. 保存完整分析结果
     result = {
         "username": TARGET_USERNAME,
-        "user_id": "1307832526484901889",  # 从之前的运行结果获取
+        "user_id": None,  # 仅分析模式下不重新获取ID
         "analysis_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "stats": {
             "raw_tweets": len(raw_tweets),

@@ -44,7 +44,7 @@ PROMPT_TEMPLATE = """
 ========================
 【重要背景说明】
 ========================
-1. 文本原始语言为日语，已被自动翻译为中文
+1. 文本原始语言可能多种多样，已翻译为中文
    - 可能存在用词不统一、表达生硬的问题
    - 请基于“语义一致性”而非字面词频进行判断
 2. 样本数量有限（通常 20–100 条）
@@ -124,9 +124,19 @@ def analyze_user_interest(
 
     content = response.choices[0].message.content.strip()
 
+    import re
     try:
+        # 尝试直接解析
         return json.loads(content)
     except json.JSONDecodeError:
+        # 尝试从 markdown 代码块提取
+        match = re.search(r'```json\s*(\{.*?\})\s*```', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+        
         raise RuntimeError(f"模型返回的不是合法 JSON：\n{content}")
 
 

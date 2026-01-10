@@ -38,8 +38,8 @@ echo ""
 
 # 1. 读取 .env 文件中的 TARGET_USERNAME
 if [ -f ".env" ]; then
-    # 从 .env 文件读取 TARGET_USERNAME，支持带引号和不带引号的格式
-    TARGET_USERNAME=$(grep "^TARGET_USERNAME=" .env | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+    # 从 .env 文件读取 TARGET_USERNAME，支持带引号和不带引号的格式，并去除注释
+    TARGET_USERNAME=$(grep "^TARGET_USERNAME=" .env | sed 's/#.*//' | cut -d '=' -f2 | tr -d '"' | tr -d "'" | xargs)
     if [ -z "$TARGET_USERNAME" ]; then
         TARGET_USERNAME="MiracleHe"  # 默认值（与 Python 脚本一致）
         echo "⚠️  .env 文件中未找到 TARGET_USERNAME，使用默认值: $TARGET_USERNAME"
@@ -136,37 +136,33 @@ try:
         print(f'   {y}年: {years[y]}条')
     print()
     
-    if 2024 in years:
-        print('✅ 成功获取2024年数据！')
-        # 从环境变量读取目标日期
-        import os
-        target_date_str = os.getenv('TARGET_DATE', '2024-01-01')
-        try:
-            target_date = datetime.strptime(target_date_str, '%Y-%m-%d')
-        except ValueError:
-            target_date = datetime(2024, 1, 1)
+    # 从环境变量读取目标日期
+    import os
+    target_date_str = os.getenv('TARGET_DATE', '2024-01-01')
+    try:
+        target_date = datetime.strptime(target_date_str, '%Y-%m-%d')
+    except ValueError:
+        target_date = datetime(2024, 1, 1)
+
+    target_year = target_date.year
+    
+    if target_year in years:
+        print(f'✅ 成功获取{target_year}年数据！')
         
         # 检查是否达到目标日期
-        earliest_2024 = min([d for d in dates if d.year == 2024])
-        if earliest_2024 <= target_date:
+        earliest_target_year = min([d for d in dates if d.year == target_year])
+        if earliest_target_year <= target_date:
             print(f'🎯 已达到目标日期：{target_date.date()}')
         else:
-            print(f'📅 最早2024年推文：{earliest_2024.date()}')
+            print(f'📅 最早{target_year}年推文：{earliest_target_year.date()}')
     else:
-        print('⚠️  仍未获取到2024年数据')
+        # 如果没有目标年份的数据，检查是否已经到达更早的时间
         earliest_date = dates[0]
-        # 从环境变量读取目标日期
-        import os
-        target_date_str = os.getenv('TARGET_DATE', '2024-01-01')
-        try:
-            target_date = datetime.strptime(target_date_str, '%Y-%m-%d')
-        except ValueError:
-            target_date = datetime(2024, 1, 1)
-            
         if earliest_date <= target_date:
-            print(f'✅ 但已达到目标日期：{earliest_date.date()} ≤ {target_date.date()}')
+             print(f'✅ 已获取更早数据：{earliest_date.date()} (目标: {target_date.date()})')
         else:
-            print(f'💡 可能用户在{target_date.date()}之前没有推文，或需要增加 MAX_PAGES')
+             print(f'⚠️  未获取到{target_year}年或更早数据')
+             print(f'💡 可能用户在{target_date.date()}之前没有推文，或需要增加 MAX_PAGES')
     
 except Exception as e:
     print(f'❌ 数据分析失败: {e}')

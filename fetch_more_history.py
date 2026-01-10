@@ -107,7 +107,7 @@ def fetch_more_tweets(user_id, until_id=None):
                 break
             params["pagination_token"] = token
             
-            time.sleep(1)  # 避免请求过快
+            time.sleep(REQUEST_INTERVAL)  # 避免请求过快
             
         except Exception as e:
             print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
