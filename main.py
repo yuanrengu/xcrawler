@@ -3,6 +3,7 @@ import re
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
@@ -26,6 +27,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取，默认 MiracleHe
 MAX_PAGES = 50                      # 控制抓取数量（50*100 = 5000 条，覆盖更长时间）
 MAX_RETRIES = 3                       # API 重试次数
+MAX_WORKERS = 5                       # 并发线程数
 CACHE_DIR = "cache"                   # 缓存目录
 
 # ======================
@@ -89,7 +91,7 @@ def detect_language(text: str) -> str:
     except:
         return "unknown"
 
-def deepseek_translate(text: str, use_cache: bool = True) -> str | None:
+def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = True) -> str | None:
     """智能翻译多语言到中文，支持缓存和重试"""
     global translation_cache
     
@@ -97,8 +99,9 @@ def deepseek_translate(text: str, use_cache: bool = True) -> str | None:
     if use_cache and text in translation_cache:
         return translation_cache[text]
     
-    # 检测语言
-    detected_lang = detect_language(text)
+    # 检测语言 (如果没有传入)
+    if not detected_lang:
+        detected_lang = detect_language(text)
     
     # 如果已经是中文，直接返回
     if detected_lang == "zh-cn" or detected_lang == "zh":
@@ -315,24 +318,41 @@ def main():
         translated_data = []  # 保存完整数据
         lang_stats = Counter()  # 统计语言分布
         
-        for t in tqdm(raw_tweets, desc="翻译进度"):
+        # 预处理：清洗和语言检测
+        to_process = []
+        for t in raw_tweets:
             original_text = clean_text(t["text"])
             if len(original_text) < 6:
                 continue
-            
-            # 检测语言
+                
             detected_lang = detect_language(original_text)
             lang_stats[detected_lang] += 1
+            to_process.append((original_text, detected_lang, t.get("created_at", "")))
+
+        # 并发翻译
+        print(f"🚀 启动 {MAX_WORKERS} 个线程进行并行翻译...")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            # 提交任务
+            future_to_tweet = {
+                executor.submit(deepseek_translate, text, lang): (text, lang, created_at)
+                for text, lang, created_at in to_process
+            }
             
-            translated_text = deepseek_translate(original_text)
-            if translated_text:  # 只添加成功翻译的
-                translated.append(translated_text)
-                translated_data.append({
-                    "original": original_text,
-                    "translated": translated_text,
-                    "detected_language": detected_lang,
-                    "created_at": t.get("created_at", "")
-                })
+            # 处理结果
+            for future in tqdm(as_completed(future_to_tweet), total=len(to_process), desc="翻译进度"):
+                original, lang, created = future_to_tweet[future]
+                try:
+                    translated_text = future.result()
+                    if translated_text:
+                        translated.append(translated_text)
+                        translated_data.append({
+                            "original": original,
+                            "translated": translated_text,
+                            "detected_language": lang,
+                            "created_at": created
+                        })
+                except Exception as e:
+                    print(f"❌ 处理推文出错: {str(e)}")
         
         # 显示语言统计
         print(f"\n📊 语言分布统计:")
