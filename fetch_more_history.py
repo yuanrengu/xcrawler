@@ -1,6 +1,8 @@
 """
-增量抓取历史推文
-从最早的推文继续向历史抓取，直到获取2024年的数据
+增量抓取脚本
+功能：
+1. 抓取比现有数据更新的推文（Forward Fetching）
+2. 抓取比现有数据更早的推文（Backward Fetching），直到到达 TARGET_DATE
 """
 import os
 import json
@@ -36,10 +38,22 @@ def get_user_id(username):
     url = f"https://api.twitter.com/2/users/by/username/{username}"
     response = requests.get(url, headers=HEADERS, timeout=10)
     response.raise_for_status()
-    return response.json()["data"]["id"]
+    # 检查返回数据
+    data = response.json()
+    if "data" not in data:
+         raise ValueError(f"用户 {username} 未找到 (可能被冻结或不存在)")
+    return data["data"]["id"]
 
-def fetch_more_tweets(user_id, until_id=None):
-    """继续抓取历史推文"""
+def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, description="抓取"):
+    """
+    通用抓取函数
+    :param user_id: 用户ID
+    :param since_id: 获取比此ID更新的推文（向后/未来）
+    :param until_id: 获取比此ID更早的推文（向前/历史）
+    :param stop_date: 如果遇到早于此日期的推文，停止抓取 (仅用于 Backward 模式)
+    :param description: 描述文本
+    :return: (tweets_list, reached_stop_date)
+    """
     url = f"https://api.twitter.com/2/users/{user_id}/tweets"
     params = {
         "max_results": 100,
@@ -48,15 +62,19 @@ def fetch_more_tweets(user_id, until_id=None):
     }
     
     if until_id:
-        params["until_id"] = until_id  # 从指定推文ID之前开始
-    
+        params["until_id"] = until_id
+    if since_id:
+        params["since_id"] = since_id
+
     all_tweets = []
     reached_target = False
     
-    print(f"🚀 开始抓取历史推文...")
+    print(f"🚀 {description}...")
+    if since_id:
+        print(f"   📍 范围: ID {since_id} 之后 (新推文)")
     if until_id:
-        print(f"📍 从推文 ID {until_id} 之前开始")
-    
+        print(f"   📍 范围: ID {until_id} 之前 (历史推文)")
+
     for page in range(MAX_PAGES):
         try:
             response = requests.get(url, headers=HEADERS, params=params, timeout=10)
@@ -66,9 +84,14 @@ def fetch_more_tweets(user_id, until_id=None):
                 reset_time = response.headers.get('x-rate-limit-reset')
                 if reset_time:
                     wait_seconds = int(reset_time) - int(time.time())
-                    print(f"⏳ API 限流，等待 {wait_seconds // 60} 分 {wait_seconds % 60} 秒...")
+                    print(f"⏳ API 限流，需等待 {wait_seconds // 60} 分 {wait_seconds % 60} 秒...")
+                    # 如果等待时间太长，直接退出
+                    if wait_seconds > 60:
+                        print("⚠️ 等待时间过长，跳过本次抓取")
+                        break
                     time.sleep(wait_seconds + 5)
-                    continue
+                    # 重试当前请求
+                    response = requests.get(url, headers=HEADERS, params=params, timeout=10)
                 else:
                     print(f"⚠️ API 限流，请稍后再试")
                     break
@@ -78,36 +101,38 @@ def fetch_more_tweets(user_id, until_id=None):
             
             page_tweets = data.get("data", [])
             if not page_tweets:
-                print(f"📭 第 {page + 1} 页无数据，已抓取完所有推文")
+                print(f"📭 第 {page + 1} 页无数据 (本批次结束)")
                 break
             
             all_tweets.extend(page_tweets)
             
-            # 检查是否已到达目标日期（2024年1月1日）
-            oldest_date = datetime.strptime(page_tweets[-1]["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-            print(f"📄 第 {page + 1} 页: {len(page_tweets)}条 | 最早: {oldest_date.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
+            # 获取本页最早时间
+            oldest_in_page = datetime.strptime(page_tweets[-1]["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            print(f"📄 第 {page + 1} 页: {len(page_tweets)}条 | 最早: {oldest_in_page.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
             
-            if oldest_date <= TARGET_DATE:
+            # 仅在向历史抓取时检查日期停止条件
+            if stop_date and oldest_in_page <= stop_date:
                 reached_target = True
-                print(f"✅ 已到达目标日期 {TARGET_DATE.strftime('%Y-%m-%d')}！")
+                print(f"✅ 已到达目标日期 {stop_date.strftime('%Y-%m-%d')}！")
                 break
             
             # 检查剩余配额
             remaining = response.headers.get('x-rate-limit-remaining')
             if remaining:
-                print(f"   剩余配额: {remaining} 次")
-                if int(remaining) < 5:
-                    print(f"⚠️ 配额不足，暂停抓取")
+               if int(remaining) % 10 == 0: # 减少日志输出
+                    print(f"   剩余配额: {remaining} 次")
+               if int(remaining) < 2:
+                    print(f"⚠️ 配额即将耗尽，暂停抓取")
                     break
             
             # 获取下一页token
             token = data.get("meta", {}).get("next_token")
             if not token:
-                print(f"✅ 已抓取所有可用推文")
+                print(f"✅ 已抓取该区间所有推文")
                 break
             params["pagination_token"] = token
             
-            time.sleep(REQUEST_INTERVAL)  # 避免请求过快
+            time.sleep(REQUEST_INTERVAL)
             
         except Exception as e:
             print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
@@ -118,91 +143,134 @@ def fetch_more_tweets(user_id, until_id=None):
 def main():
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
-    print(f"📅 目标: 抓取到 {TARGET_DATE.strftime('%Y-%m-%d')} 或最早推文")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60 + "\n")
     
-    # 加载现有数据
+    # 1. 加载现有数据
     raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
+    existing_tweets = []
     
     if os.path.exists(raw_file):
-        with open(raw_file, 'r', encoding='utf-8') as f:
-            existing_tweets = json.load(f)
-        print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
+        try:
+            with open(raw_file, 'r', encoding='utf-8') as f:
+                existing_tweets = json.load(f)
+            print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
+        except json.JSONDecodeError:
+            print("⚠️ 数据文件损坏，将重新开始抓取")
+            existing_tweets = []
+    else:
+        print(f"⚠️ 未找到现有数据文件，将从头开始抓取")
+
+    # 2. 获取用户ID
+    try:
+        user_id = get_user_id(TARGET_USERNAME)
+        print(f"✅ 用户 ID: {user_id}\n")
+    except Exception as e:
+        print(f"❌ 无法获取用户ID: {e}")
+        return
+
+    # 确定 ID 边界
+    newest_id = None
+    oldest_id = None
+    oldest_date = None
+
+    if existing_tweets:
+        # 按ID排序（字符串ID可以字典序排序，但Twitter ID是大致随时间递增的数字）
+        # 安全起见，按 created_at 排序
+        existing_tweets.sort(key=lambda t: t.get("created_at", ""), reverse=True)
         
-        # 找到最早的推文ID
-        oldest_tweet = min(existing_tweets, key=lambda t: t.get("created_at", ""))
+        newest_tweet = existing_tweets[0]
+        oldest_tweet = existing_tweets[-1]
+        
+        newest_id = newest_tweet["id"]
         oldest_id = oldest_tweet["id"]
         oldest_date = datetime.strptime(oldest_tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-        print(f"📍 最早推文时间: {oldest_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"📍 最早推文 ID: {oldest_id}\n")
         
-        # 判断是否需要继续抓取
-        if oldest_date <= TARGET_DATE:
-            print(f"✅ 已有 {TARGET_DATE.strftime('%Y-%m-%d')} 或更早的数据，无需继续抓取")
-            return
+        print(f"📍 现有最新推文: {newest_tweet['created_at']} (ID: {newest_id})")
+        print(f"📍 现有最早推文: {oldest_tweet['created_at']} (ID: {oldest_id})\n")
+
+    # ==========================
+    # 3. 阶段一：抓取新推文 (Forward)
+    # ==========================
+    new_tweets_forward = []
+    if newest_id:
+        print("📥 阶段一: 检查新发布的推文...")
+        tweets, _ = fetch_tweets_generic(
+            user_id, 
+            since_id=newest_id, 
+            description="抓取最新推文"
+        )
+        if tweets:
+            print(f"✅ 发现 {len(tweets)} 条新推文！")
+            new_tweets_forward = tweets
         else:
-            print(f"📈 最早推文在 {TARGET_DATE.strftime('%Y-%m-%d')} 之后，继续抓取历史数据\n")
+            print("✅ 没有发现更新的推文")
+        print("-" * 30 + "\n")
     else:
-        print(f"⚠️ 未找到现有数据文件，将从头开始抓取\n")
-        existing_tweets = []
-        oldest_id = None
+        # 如果没有现有数据，这步跳过，直接进入历史抓取（或视为全量抓取）
+        print("📥 阶段一: 无现有数据，跳过增量更新，直接开始全量抓取...\n")
+
+    # ==========================
+    # 4. 阶段二：抓取历史推文 (Backward)
+    # ==========================
+    new_tweets_backward = []
+    reached_target = False
     
-    # 获取用户ID
-    print("🔍 获取用户 ID...")
-    user_id = get_user_id(TARGET_USERNAME)
-    print(f"✅ 用户 ID: {user_id}\n")
+    # 判断是否还需要抓取历史
+    need_history = True
+    if oldest_date and oldest_date <= TARGET_DATE:
+        print(f"✅ 现有数据已涵盖到目标日期 {TARGET_DATE.strftime('%Y-%m-%d')}，跳过历史抓取")
+        need_history = False
+    elif newest_id is None:
+        # 如果是第一次抓取，不需要 untill_id
+        pass 
     
-    # 抓取更多历史推文
-    new_tweets, reached_target = fetch_more_tweets(user_id, until_id=oldest_id)
+    if need_history:
+        print("📥 阶段二: 补充历史推文...")
+        tweets, reached = fetch_tweets_generic(
+            user_id,
+            until_id=oldest_id,  # 从已知最早的往前
+            stop_date=TARGET_DATE,
+            description="抓取历史推文"
+        )
+        new_tweets_backward = tweets
+        reached_target = reached
+        if tweets:
+            print(f"✅ 抓取到 {len(tweets)} 条历史推文")
+        else:
+            print("⚠️ 未能抓取到更多历史推文 (可能已达API限制或无更多数据)")
+        print("-" * 30 + "\n")
+
+    # ==========================
+    # 5. 合并与保存
+    # ==========================
+    all_new_tweets = new_tweets_forward + new_tweets_backward
     
-    if new_tweets:
-        print(f"\n📊 本次抓取: {len(new_tweets)} 条新推文")
+    if all_new_tweets:
+        print(f"📊 总计新增抓取: {len(all_new_tweets)} 条")
         
-        # 合并数据（去重）
-        existing_ids = {t["id"] for t in existing_tweets}
-        new_unique = [t for t in new_tweets if t["id"] not in existing_ids]
+        # 合并去重
+        combined = existing_tweets + all_new_tweets
+        # 再次按ID去重
+        unique_tweets = {t["id"]: t for t in combined}.values()
+        final_list = list(unique_tweets)
         
-        all_tweets = existing_tweets + new_unique
-        all_tweets.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+        # 排序
+        final_list.sort(key=lambda t: t.get("created_at", ""), reverse=True)
         
-        print(f"📊 新增推文: {len(new_unique)} 条")
-        print(f"📊 总推文数: {len(all_tweets)} 条")
+        print(f"💾 保存总推文数: {len(final_list)} 条")
         
-        # 统计时间范围
-        dates = [datetime.strptime(t["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ") for t in all_tweets]
-        dates.sort()
-        print(f"\n📅 时间范围:")
-        print(f"   最早: {dates[0].strftime('%Y-%m-%d')}")
-        print(f"   最新: {dates[-1].strftime('%Y-%m-%d')}")
-        print(f"   跨度: {(dates[-1] - dates[0]).days} 天")
-        
-        # 按年份统计
-        from collections import Counter
-        years = Counter([d.year for d in dates])
-        print(f"\n📊 按年份统计:")
-        for year in sorted(years.keys()):
-            print(f"   {year}年: {years[year]}条")
-        
-        # 保存
+        # 写入文件
         with open(raw_file, 'w', encoding='utf-8') as f:
-            json.dump(all_tweets, f, ensure_ascii=False, indent=2)
-        print(f"\n💾 已保存至: {raw_file}")
+            json.dump(final_list, f, ensure_ascii=False, indent=2)
+            
+        print(f"✅ 数据已更新至: {raw_file}")
         
-        # 判断抓取结果
-        earliest_date = dates[0]
-        if reached_target:
-            print(f"\n✅ 成功！已抓取到 {TARGET_DATE.strftime('%Y-%m-%d')} 的数据")
-        elif earliest_date <= TARGET_DATE:
-            print(f"\n✅ 成功！已抓取到 {earliest_date.strftime('%Y-%m-%d')}（早于目标日期）")
-        else:
-            print(f"\n⚠️ 未完全达到目标日期，最早推文: {earliest_date.strftime('%Y-%m-%d')}")
-            print(f"💡 可能原因：用户在 {TARGET_DATE.strftime('%Y-%m-%d')} 之前没有推文，或需要增加 MAX_PAGES")
     else:
-        print(f"\n⚠️ 未抓取到新推文")
-    
+        print("🎉 数据已是最新，无需更新")
+
     print("\n" + "=" * 60)
-    print("✅ 抓取完成！")
+    print("✅ 所有任务完成！")
     print("=" * 60)
 
 if __name__ == "__main__":

@@ -22,14 +22,14 @@ elif [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo ""
     echo "模式说明:"
     echo "  全量抓取: 重新抓取所有数据，会备份现有数据"
-    echo "  增量抓取: 在现有数据基础上补充新数据，避免API限流"
+    echo "  增量抓取: 双向同步（抓取新发布 + 补全历史），避免API限流"
     echo ""
     exit 0
 fi
 
 echo "=================================================="
 if [ "$MODE" = "incremental" ]; then
-    echo "🔄 增量抓取数据（续传模式）"
+    echo "🔄 增量抓取数据（双向抓取：新数据 + 历史补全）"
 else
     echo "🔄 全量重新抓取数据"
 fi
@@ -61,14 +61,14 @@ if [ "$MODE" = "full" ]; then
     echo "✅ 备份完成: cache_backup/"
     echo ""
 else
-    echo "📈 增量模式：保留现有数据，仅补充新数据"
+    echo "📈 增量模式：保留现有数据，补充新发布 & 补全历史"
     echo ""
 fi
 
 # 3. 显示当前配置
 echo "⚙️  当前配置:"
 if [ "$MODE" = "incremental" ]; then
-    echo "   模式: 增量抓取（续传）"
+    echo "   模式: 增量抓取（双向同步）"
     echo "   MAX_PAGES = 10 (避免API限流)"
 else
     echo "   模式: 全量重新抓取"
