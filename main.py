@@ -111,25 +111,30 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
     
     # 如果不是日语或英语，也尝试翻译（通用模式）
     
-    prompt = f"""
-你是一名专业的翻译专家。
-请将以下推文（检测到的语言代码：{detected_lang}）翻译成自然、准确的简体中文：
-- 保留技术术语和专有名词
-- 保持原文的语气和风格
-- 不要解释或扩写
-- 如果是网络用语或梗，请翻译成对应的中文网络用语
+    p = f"""
+你是一名精通多国语言的翻译专家，特别擅长将社交媒体内容（推特/X）翻译成地道、自然的中文。
 
-原文：
+【任务】
+请将以下[{detected_lang}]推文翻译成简体中文。
+
+【要求】
+1. **地道表达**：不要直译，使用符合中文母语者习惯的表达方式。
+2. **语境理解**：准确理解推特特有的非正式语境、语气和情感（如吐槽、兴奋、反讽）。
+3. **术语处理**：保留专有名词（人名、地名、作品名）、技术术语或特定的原文标签（如 #Hashtag）。
+4. **网络用语**：如果原文包含网络梗、流行语或缩写（如 lol, omg, wwww），请翻译成对应的中文网络用语或流行梗。
+5. **格式保持**：不要随意解释或扩写，只输出翻译后的文本。
+
+【原文】
 {text}
-"""
+""".strip()
     
     # 重试机制
     for attempt in range(MAX_RETRIES):
         try:
             r = ds_client.chat.completions.create(
                 model=LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0
+                messages=[{"role": "user", "content": p}],
+                temperature=0.1
             )
             result = r.choices[0].message.content.strip()
             
