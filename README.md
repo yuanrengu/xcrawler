@@ -58,6 +58,7 @@ xcrawler/
 ├── fetch_more_history.py        # 智能增量抓取：双向抓取（新推文 + 历史补全）
 ├── analyze_pro.py               # 专业分析：AI 驱动的兴趣画像分析 🆕
 ├── analyze_behavior.py          # 行为分析：时间模式 + 生活事件
+├── translate_sync.py            # 翻译同步：增量翻译/重翻工具 🆕
 ├── analyze_only.py              # 快速分析：仅兴趣画像（不抓取数据）
 ├── refetch_data.sh              # 🌟 智能抓取脚本：支持全量/增量模式（推荐使用）
 ├── requirements.txt             # 依赖包列表
@@ -342,7 +343,10 @@ python3 main.py
 # 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
 python3 fetch_more_history.py
 
-# 或使用便捷脚本
+# 确保新数据被翻译（关键步骤）🆕
+python3 translate_sync.py
+
+# 或使用便捷脚本（已包含同步逻辑）
 ./refetch_data.sh --incremental    # 增量抓取（推荐）
 ./refetch_data.sh                  # 全量重新抓取
 
@@ -400,6 +404,21 @@ python3 analyze_behavior.py  # 行为分析
 - **语气风格保持**：保留原文的情感色彩和语气
 - **网络用语本地化**：将英语/日语网络梗翻译为对应的中文网络用语
 - **上下文理解**：基于推文特点进行语境化翻译
+
+### 独立翻译同步工具 (`translate_sync.py`) 🆕
+
+用于在不重新抓取数据的情况下，同步或重新翻译推文。
+
+```bash
+# 1. 增量同步（默认）
+# 仅翻译 _raw_tweets.json 中尚未翻译的推文
+python3 translate_sync.py
+
+# 2. 强制重翻（--force）
+# 忽略缓存，强制重新翻译所有推文（用于修复翻译或语言检测问题）
+python3 translate_sync.py --force
+```
+
 
 ## 📊 输出示例
 
@@ -716,7 +735,13 @@ chmod +x refetch_data.sh
 
 ## 🔄 更新日志
 
-### v2.5.0 - 增量抓取完整版 🆕
+### v2.6.0 - 翻译同步与修复 🆕
+- ✅ **独立同步工具**：新增 `translate_sync.py`，支持增量翻译和强制重翻 (`--force`)
+- ✅ **智能依赖处理**：`main.py` 和同步脚本支持可选依赖（如 `langdetect` 缺失时自动降级）
+- ✅ **行为分析增强**：`analyze_behavior.py` 结合原始数据（时间模式）和翻译数据（事件检测）
+- ✅ **健壮性提升**：支持 Ctrl+C 中断保存和增量保存，防止数据丢失
+
+### v2.5.0 - 增量抓取完整版
 - ✅ **双向抓取**：`fetch_more_history.py` 现在支持同时抓取新发布的推文（Forward）和补全历史（Backward）
 - ✅ **无缝更新**：彻底解决只能补历史不能追新的问题
 - ✅ **智能判断**：自动识别数据断点，高效补充缺失数据

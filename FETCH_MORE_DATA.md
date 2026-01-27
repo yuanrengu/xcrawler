@@ -234,14 +234,14 @@ else:
 数据更新后，需要重新翻译和分析：
 
 ```bash
-# 1. 翻译新推文（使用缓存，只翻译新内容）
-python3 main.py
+# 1. 翻译新推文（关键步骤）
+python3 translate_sync.py
 
 # 2. 重新进行行为分析
 python3 analyze_behavior.py
 
 # 3. 重新生成兴趣画像
-python3 analyze_only.py
+python3 analyze_pro.py
 ```
 
 ---

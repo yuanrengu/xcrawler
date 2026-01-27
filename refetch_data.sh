@@ -104,6 +104,14 @@ else
     python3 main.py
 fi
 exit_code=$?
+
+# 4.1 运行翻译同步 (新增)
+if [ $exit_code -eq 0 ]; then
+    echo ""
+    echo "🌍 同步翻译数据..."
+    python3 translate_sync.py
+fi
+
 echo "=================================================="
 echo ""
 

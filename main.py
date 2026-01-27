@@ -6,13 +6,11 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
-from sklearn.cluster import KMeans
+
 from dotenv import load_dotenv
 from datetime import datetime
 from collections import Counter
-import langdetect
-from langdetect import detect
+
 
 _ = load_dotenv()
 
@@ -38,9 +36,8 @@ ds_client = OpenAI(
     base_url=DEEPSEEK_BASE_URL
 )
 
-embed_model = SentenceTransformer(
-    "paraphrase-multilingual-MiniLM-L12-v2"
-)
+# embed_model moved to main()
+
 
 HEADERS = {
     "Authorization": f"Bearer {X_BEARER_TOKEN}"
@@ -81,6 +78,7 @@ def save_translation_cache(cache):
 def detect_language(text: str) -> str:
     """检测文本语言"""
     try:
+        from langdetect import detect
         # 清理文本，移除URL和@符号
         clean = re.sub(r"http\S+|@\w+|#\w+", "", text).strip()
         if len(clean) < 3:
@@ -88,6 +86,8 @@ def detect_language(text: str) -> str:
         
         lang = detect(clean)
         return lang
+    except ImportError:
+        return "unknown"
     except:
         return "unknown"
 
@@ -384,6 +384,10 @@ def main():
         cluster_num = max(2, min(8, len(translated) // 10))
         print(f"🔢 向量化 + 聚类（聚类数: {cluster_num}）...")
         
+        # Lazy import
+        from sentence_transformers import SentenceTransformer
+        from sklearn.cluster import KMeans
+        embed_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
         vectors = embed_model.encode(translated)
         labels = KMeans(n_clusters=cluster_num, random_state=42).fit_predict(vectors)
 

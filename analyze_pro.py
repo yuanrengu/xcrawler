@@ -47,7 +47,7 @@ PROMPT_TEMPLATE = """
 1. 文本原始语言可能多种多样，已翻译为中文
    - 可能存在用词不统一、表达生硬的问题
    - 请基于“语义一致性”而非字面词频进行判断
-2. 样本数量有限（通常 20–100 条）
+2. 样本数量有限（通常 20–300 条）
 3. 文本中可能混杂日常记录、情绪表达、转发内容
 
 ========================
@@ -73,12 +73,18 @@ Step 5：提炼支持关键词或典型表达
 ========================
 - 只输出 JSON
 - 不输出解释性文字
-- JSON 字段定义：
-  - tag：兴趣标签（中文）
-  - level："core" 或 "peripheral"
-  - confidence：0~1
-  - keywords：关键词数组
-  - evidence_count：支持该兴趣的文本数量（估计）
+- JSON 结构要求：
+  {{
+    "interests": [
+      {{
+        "tag": "兴趣标签",
+        "level": "core/peripheral",
+        "confidence": 0.8,
+        "keywords": ["kw1", "kw2"],
+        "evidence_count": 5
+      }}
+    ]
+  }}
 
 - 兴趣数量建议 3–7 个
 - 不要输出重复或高度相似标签
@@ -116,7 +122,7 @@ def analyze_user_interest(
     response = client.chat.completions.create(
         model=MODEL,
         messages=[
-            {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。"},
+            {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。请务必输出合法的 JSON 格式。"},
             {"role": "user", "content": prompt}
         ],
         temperature=temperature
@@ -130,7 +136,7 @@ def analyze_user_interest(
         return json.loads(content)
     except json.JSONDecodeError:
         # 尝试从 markdown 代码块提取
-        match = re.search(r'```json\s*(\{.*?\})\s*```', content, re.DOTALL)
+        match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
         if match:
             try:
                 return json.loads(match.group(1))
@@ -152,6 +158,9 @@ def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> Li
     :param username: 用户名
     :return: 翻译后的文本列表
     """
+    if username is None:
+        username = TARGET_USERNAME
+        
     translated_file = os.path.join(cache_dir, f"{username}_translated.json")
     
     if not os.path.exists(translated_file):
@@ -254,4 +263,6 @@ if __name__ == "__main__":
         print(f"❌ 运行时错误: {e}")
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ 未知错误: {e}")

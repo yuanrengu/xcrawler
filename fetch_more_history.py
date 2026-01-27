@@ -44,15 +44,16 @@ def get_user_id(username):
          raise ValueError(f"用户 {username} 未找到 (可能被冻结或不存在)")
     return data["data"]["id"]
 
-def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, description="抓取"):
+def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, max_pages_limit=MAX_PAGES, description="抓取"):
     """
     通用抓取函数
     :param user_id: 用户ID
     :param since_id: 获取比此ID更新的推文（向后/未来）
     :param until_id: 获取比此ID更早的推文（向前/历史）
     :param stop_date: 如果遇到早于此日期的推文，停止抓取 (仅用于 Backward 模式)
+    :param max_pages_limit: 本次调用的最大页数限制
     :param description: 描述文本
-    :return: (tweets_list, reached_stop_date)
+    :return: (tweets_list, reached_stop_date, pages_fetched)
     """
     url = f"https://api.twitter.com/2/users/{user_id}/tweets"
     params = {
@@ -68,14 +69,15 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
 
     all_tweets = []
     reached_target = False
+    pages_fetched = 0
     
-    print(f"🚀 {description}...")
+    print(f"🚀 {description} (最大页数限制: {max_pages_limit})...")
     if since_id:
         print(f"   📍 范围: ID {since_id} 之后 (新推文)")
     if until_id:
         print(f"   📍 范围: ID {until_id} 之前 (历史推文)")
 
-    for page in range(MAX_PAGES):
+    for page in range(max_pages_limit):
         try:
             response = requests.get(url, headers=HEADERS, params=params, timeout=10)
             
@@ -105,6 +107,7 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
                 break
             
             all_tweets.extend(page_tweets)
+            pages_fetched += 1
             
             # 获取本页最早时间
             oldest_in_page = datetime.strptime(page_tweets[-1]["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -138,12 +141,13 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
             print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
             break
     
-    return all_tweets, reached_target
+    return all_tweets, reached_target, pages_fetched
 
 def main():
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📊 每日最大抓取页数: {MAX_PAGES}")
     print("=" * 60 + "\n")
     
     # 1. 加载现有数据
@@ -189,17 +193,25 @@ def main():
         print(f"📍 现有最新推文: {newest_tweet['created_at']} (ID: {newest_id})")
         print(f"📍 现有最早推文: {oldest_tweet['created_at']} (ID: {oldest_id})\n")
 
+    # 共享配额
+    remaining_pages_quota = MAX_PAGES
+
     # ==========================
     # 3. 阶段一：抓取新推文 (Forward)
     # ==========================
     new_tweets_forward = []
+    print(f"🔄 剩余配额: {remaining_pages_quota} 页")
+    
     if newest_id:
         print("📥 阶段一: 检查新发布的推文...")
-        tweets, _ = fetch_tweets_generic(
+        tweets, _, pages_used = fetch_tweets_generic(
             user_id, 
             since_id=newest_id, 
+            max_pages_limit=remaining_pages_quota,
             description="抓取最新推文"
         )
+        remaining_pages_quota -= pages_used
+        
         if tweets:
             print(f"✅ 发现 {len(tweets)} 条新推文！")
             new_tweets_forward = tweets
@@ -225,16 +237,23 @@ def main():
         # 如果是第一次抓取，不需要 untill_id
         pass 
     
+    if remaining_pages_quota <= 0:
+        print(f"⚠️ 配额已用完 ({MAX_PAGES} 页)，跳过历史抓取")
+        need_history = False
+
     if need_history:
-        print("📥 阶段二: 补充历史推文...")
-        tweets, reached = fetch_tweets_generic(
+        print(f"📥 阶段二: 补充历史推文... (剩余配额: {remaining_pages_quota} 页)")
+        tweets, reached, pages_used = fetch_tweets_generic(
             user_id,
             until_id=oldest_id,  # 从已知最早的往前
             stop_date=TARGET_DATE,
+            max_pages_limit=remaining_pages_quota,
             description="抓取历史推文"
         )
         new_tweets_backward = tweets
         reached_target = reached
+        remaining_pages_quota -= pages_used
+        
         if tweets:
             print(f"✅ 抓取到 {len(tweets)} 条历史推文")
         else:
