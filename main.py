@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import argparse
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
@@ -15,18 +16,31 @@ from collections import Counter
 _ = load_dotenv()
 
 # ======================
-# 配置
+# 配置（默认值，CLI 参数可覆盖）
 # ======================
 X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取，默认 MiracleHe
-MAX_PAGES = 50                      # 控制抓取数量（50*100 = 5000 条，覆盖更长时间）
-MAX_RETRIES = 3                       # API 重试次数
-MAX_WORKERS = 5                       # 并发线程数
-CACHE_DIR = "cache"                   # 缓存目录
+TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
+MAX_PAGES = 50
+MAX_RETRIES = 3
+MAX_WORKERS = 5
+CACHE_DIR = "cache"
+BATCH_SIZE = 10
+
+
+def parse_args():
+    """解析 CLI 参数，覆盖 .env 默认值"""
+    parser = argparse.ArgumentParser(description="Twitter 用户数据抓取 + 翻译 + 聚类分析")
+    parser.add_argument("-u", "--user", help="目标用户名（覆盖 .env 中的 TARGET_USERNAME）")
+    parser.add_argument("--pages", type=int, help=f"抓取页数，每页100条（默认 {MAX_PAGES}）")
+    parser.add_argument("--batch-size", type=int, help=f"每批翻译条数（默认 {BATCH_SIZE}）")
+    parser.add_argument("--model", help=f"LLM 模型名（默认 {LLM_MODEL}）")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    parser.add_argument("--no-translate", action="store_true", help="跳过翻译，仅抓取")
+    return parser.parse_args()
 
 # ======================
 # 初始化客户端和缓存
@@ -427,8 +441,21 @@ def fetch_tweets(user_id: str) -> list[dict]:
 # 主流程
 # ======================
 def main():
-    global translation_cache
-    
+    global translation_cache, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR
+
+    # 应用 CLI 参数（覆盖 .env 默认值）
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.pages:
+        MAX_PAGES = args.pages
+    if args.batch_size:
+        BATCH_SIZE = args.batch_size
+    if args.model:
+        LLM_MODEL = args.model
+    if args.cache_dir:
+        CACHE_DIR = args.cache_dir
+
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

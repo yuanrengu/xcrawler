@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from sklearn.cluster import KMeans
 from datetime import datetime
 
@@ -14,7 +15,20 @@ _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="快速兴趣画像分析（仅分析现有数据）")
+    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    return parser.parse_args()
+
 def main():
+    global TARGET_USERNAME, CACHE_DIR
+
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.cache_dir:
+        CACHE_DIR = args.cache_dir
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

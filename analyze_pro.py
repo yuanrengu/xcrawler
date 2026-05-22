@@ -1,6 +1,7 @@
 # analyze_pro.py
 import os
 import json
+import argparse
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
@@ -201,7 +202,21 @@ def save_analysis_result(result: Dict[str, Any], cache_dir: str = "cache", usern
 # 主函数
 # =========================
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="AI 驱动的专业兴趣画像分析")
+    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--model", help=f"LLM 模型名（默认 {MODEL}）")
+    parser.add_argument("--temperature", type=float, default=0.2, help="模型温度（默认 0.2）")
+    parser.add_argument("--cache-dir", help="缓存目录")
+    return parser.parse_args()
+
 if __name__ == "__main__":
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.model:
+        MODEL = args.model
+
     print("=" * 60)
     print("🎯 用户兴趣画像分析（专业版）")
     print("=" * 60)
