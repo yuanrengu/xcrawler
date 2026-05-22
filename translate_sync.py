@@ -1,19 +1,18 @@
 import os
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
 from dotenv import load_dotenv
 
 # Reuse logic from main.py
 # Make sure main.py is in the same directory or PYTHONPATH
 from main import (
-    deepseek_translate, 
+    deepseek_translate,
+    deepseek_translate_batch,
     detect_language, 
     clean_text, 
     load_translation_cache, 
     save_translation_cache,
-    MAX_WORKERS,
+    BATCH_SIZE,
     CACHE_DIR
 )
 
@@ -101,15 +100,9 @@ def main():
 
     print(f"📝 发现 {len(to_process)} 条推文需要翻译")
     
-    # 3. Translate
-    print(f"🚀 启动 {MAX_WORKERS} 个线程进行翻译...")
-    
-    # If forcing, we might want to reset the translated_data list or overwrite updates.
-    # The safest way for "re-translate all" is to assume new_translations WILL BE the full list 
-    # (minus maybe short ones we skipped)
-    # BUT `to_process` loops over raw_tweets. So if we successfully translate everything in `to_process`, 
-    # we effectively have the full dataset.
-    
+    # 3. 批量翻译
+    use_cache_flag = not args.force
+
     if args.force:
         # 备份旧翻译文件，防止中途崩溃导致数据丢失
         import shutil
@@ -120,55 +113,23 @@ def main():
         print("⚠️  强制模式：将覆盖现有的翻译文件")
         translated_data = [] 
 
+    print(f"🚀 批量翻译 {len(to_process)} 条推文（每批 {BATCH_SIZE} 条）...")
+
+    all_texts = [item["original"] for item in to_process]
+    all_langs = [item["lang"] for item in to_process]
+
+    batch_results = deepseek_translate_batch(all_texts, all_langs, use_cache=use_cache_flag)
+
     new_translations = []
-    
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        # Pass use_cache=False if force is on
-        use_cache_flag = not args.force
-        
-        future_to_item = {
-            executor.submit(deepseek_translate, item["original"], item["lang"], use_cache=use_cache_flag): item
-            for item in to_process
-        }
-        
-        try:
-            count = 0
-            for future in tqdm(as_completed(future_to_item), total=len(to_process), desc="翻译进度"):
-                item = future_to_item[future]
-                try:
-                    translated_text = future.result()
-                    if translated_text:
-                        new_item = {
-                            "original": item["original"],
-                            "translated": translated_text,
-                            "detected_language": item["lang"],
-                            "created_at": item["created_at"]
-                        }
-                        new_translations.append(new_item)
-                        count += 1
-                        
-                        # Incremental save every 5 items
-                        if count % 5 == 0:
-                             # Merge: if force, new_translations IS the data. If sync, translated_data + new.
-                             current_data = translated_data + new_translations
-                             current_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-                             with open(translated_file_path, 'w', encoding='utf-8') as f:
-                                json.dump(current_data, f, ensure_ascii=False, indent=2)
-                             
-                             # Save cache (update with new translations)
-                             if not args.force:
-                                 # Only update cache file if we are using it? 
-                                 # actually even if force, we might want to populate cache for NEXT time.
-                                 # But if we force, we want to overwrite cache entries?
-                                 # deepseek_translate updates in-memory cache automatically.
-                                 pass
-                             
-                             save_translation_cache(main.translation_cache)
-                             
-                except Exception as e:
-                    print(f"❌ 翻译出错: {str(e)}")
-        except KeyboardInterrupt:
-            print("\n🛑 用户手动中断同步，正在保存已完成的翻译...")
+    for i, item in enumerate(to_process):
+        translated_text = batch_results[i]
+        if translated_text:
+            new_translations.append({
+                "original": item["original"],
+                "translated": translated_text,
+                "detected_language": item["lang"],
+                "created_at": item["created_at"]
+            })
 
     if new_translations:
         # Final save

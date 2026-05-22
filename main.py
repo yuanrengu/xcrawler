@@ -92,25 +92,23 @@ def detect_language(text: str) -> str:
         return "unknown"
 
 def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = True) -> str | None:
-    """智能翻译多语言到中文，支持缓存和重试"""
+    """智能翻译单条推文到中文，支持缓存和重试（保留向后兼容）"""
     global translation_cache
-    
+
     # 检查缓存
     if use_cache and text in translation_cache:
         return translation_cache[text]
-    
+
     # 检测语言 (如果没有传入)
     if not detected_lang:
         detected_lang = detect_language(text)
-    
+
     # 如果已经是中文，直接返回
     if detected_lang == "zh-cn" or detected_lang == "zh":
         if use_cache:
             translation_cache[text] = text
         return text
-    
-    # 如果不是日语或英语，也尝试翻译（通用模式）
-    
+
     p = f"""
 你是一名精通多国语言的翻译专家，特别擅长将社交媒体内容（推特/X）翻译成地道、自然的中文。
 
@@ -127,7 +125,7 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
 【原文】
 {text}
 """.strip()
-    
+
     # 重试机制
     for attempt in range(MAX_RETRIES):
         try:
@@ -137,11 +135,11 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
                 temperature=0.1
             )
             result = r.choices[0].message.content.strip()
-            
+
             # 保存到缓存
             if use_cache:
                 translation_cache[text] = result
-            
+
             return result
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
@@ -150,6 +148,150 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
             else:
                 print(f"❌ 翻译失败，跳过该条推文: {str(e)}")
                 return None
+
+
+BATCH_SIZE = 10  # 每批翻译的推文数量
+
+
+def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] | None = None,
+                              use_cache: bool = True) -> list[str | None]:
+    """
+    批量翻译推文到中文，一次 API 调用翻译多条，大幅降低费用。
+
+    :param texts: 推文文本列表
+    :param detected_langs: 每条推文的语言列表（可选）
+    :param use_cache: 是否使用缓存
+    :return: 翻译结果列表（与输入等长，失败的为 None）
+    """
+    global translation_cache
+
+    n = len(texts)
+    if detected_langs is None:
+        langs: list[str | None] = [None] * n
+    else:
+        langs = list(detected_langs)
+
+    results: list[str | None] = [None] * n
+
+    # 1. 先从缓存和中文直通中提取已有的
+    to_translate_indices = []
+    to_translate_texts = []
+    to_translate_langs = []
+
+    for i in range(n):
+        text = texts[i]
+        lang = langs[i]
+
+        # 检查缓存
+        if use_cache and text in translation_cache:
+            results[i] = translation_cache[text]
+            continue
+
+        # 检测语言
+        if not lang:
+            lang = detect_language(text)
+            langs[i] = lang
+
+        # 中文直通
+        if lang in ("zh-cn", "zh"):
+            if use_cache:
+                translation_cache[text] = text
+            results[i] = text
+            continue
+
+        to_translate_indices.append(i)
+        to_translate_texts.append(text)
+        to_translate_langs.append(lang)
+
+    if not to_translate_texts:
+        return results
+
+    # 2. 分批调用 API
+    for batch_start in range(0, len(to_translate_texts), BATCH_SIZE):
+        batch_end = batch_start + BATCH_SIZE
+        batch_indices = to_translate_indices[batch_start:batch_end]
+        batch_texts = to_translate_texts[batch_start:batch_end]
+        batch_langs = to_translate_langs[batch_start:batch_end]
+        batch_size = len(batch_texts)
+
+        # 构建编号列表
+        numbered_lines = "\n".join(f"[{j+1}] {t}" for j, t in enumerate(batch_texts))
+        lang_hint = ", ".join(set(batch_langs))
+
+        p = f"""你是一名精通多国语言的翻译专家，擅长将社交媒体内容翻译成地道中文。
+
+【任务】
+将以下 {batch_size} 条推文依次翻译成简体中文。原文语言可能包含 {lang_hint} 等。
+
+【要求】
+1. 地道表达，不要直译
+2. 保留专有名词和 #Hashtag
+3. 网络用语翻译成对应中文网络用语
+4. 只输出翻译，不要解释
+
+【输出格式】
+每行一条翻译，格式为 [编号] 翻译内容，必须与原文编号一一对应。
+
+【原文】
+{numbered_lines}""".strip()
+
+        # 重试
+        for attempt in range(MAX_RETRIES):
+            try:
+                r = ds_client.chat.completions.create(
+                    model=LLM_MODEL,
+                    messages=[{"role": "user", "content": p}],
+                    temperature=0.1
+                )
+                response_text = r.choices[0].message.content.strip()
+
+                # 解析响应：按 [N] 前缀分割
+                parsed = _parse_batch_response(response_text, batch_size)
+
+                for j, idx in enumerate(batch_indices):
+                    if j < len(parsed) and parsed[j]:
+                        results[idx] = parsed[j]
+                        if use_cache:
+                            translation_cache[texts[idx]] = parsed[j]
+                break
+            except Exception as e:
+                if attempt < MAX_RETRIES - 1:
+                    print(f"⚠️ 批量翻译失败，重试 {attempt + 1}/{MAX_RETRIES}... {str(e)}")
+                    time.sleep(2 ** attempt)
+                else:
+                    print(f"❌ 批量翻译失败，回退到单条翻译...")
+                    # 回退：逐条翻译
+                    for j, idx in enumerate(batch_indices):
+                        single = deepseek_translate(texts[idx], langs[idx], use_cache)
+                        results[idx] = single
+
+    return results
+
+
+def _parse_batch_response(response: str, expected_count: int) -> list[str]:
+    """
+    解析批量翻译响应，提取 [N] 开头的翻译结果。
+    兼容多种格式：[1] xxx、1. xxx、1) xxx 等。
+    """
+    import re
+    lines = response.strip().split("\n")
+    results = []
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # 匹配 [N]、N.、N) 等格式
+        match = re.match(r'^\[?\d+\]?\s*[\.\):：]?\s*(.+)', line)
+        if match:
+            results.append(match.group(1).strip())
+
+    # 如果解析失败（行数不对），尝试按行直接返回
+    if len(results) != expected_count:
+        # fallback: 过滤空行后直接返回
+        results = [l.strip() for l in lines if l.strip()]
+
+    return results
 
 def deepseek_profile_summary(cluster_text):
     """生成用户画像，支持重试"""
@@ -317,8 +459,8 @@ def main():
             json.dump(raw_tweets, f, ensure_ascii=False, indent=2)
         print(f"💾 原始推文已保存至: {raw_file}\n")
 
-        # 3. 清洗 + 翻译
-        print("🧹 清洗 + 智能翻译（日/英 → 中）...")
+        # 3. 清洗 + 批量翻译
+        print("🧹 清洗 + 智能批量翻译...")
         translated = []
         translated_data = []  # 保存完整数据
         lang_stats = Counter()  # 统计语言分布
@@ -329,40 +471,37 @@ def main():
             original_text = clean_text(t["text"])
             if len(original_text) < 6:
                 continue
-                
             detected_lang = detect_language(original_text)
             lang_stats[detected_lang] += 1
             to_process.append((original_text, detected_lang, t.get("created_at", "")))
 
-        # 并发翻译
-        print(f"🚀 启动 {MAX_WORKERS} 个线程进行并行翻译...")
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            # 提交任务
-            future_to_tweet = {
-                executor.submit(deepseek_translate, text, lang): (text, lang, created_at)
-                for text, lang, created_at in to_process
-            }
-            
-            # 处理结果
-            save_counter = 0
-            for future in tqdm(as_completed(future_to_tweet), total=len(to_process), desc="翻译进度"):
-                original, lang, created = future_to_tweet[future]
-                try:
-                    translated_text = future.result()
-                    if translated_text:
-                        translated.append(translated_text)
-                        translated_data.append({
-                            "original": original,
-                            "translated": translated_text,
-                            "detected_language": lang,
-                            "created_at": created
-                        })
-                        save_counter += 1
-                        # 每翻译20条保存一次缓存，防止崩溃丢失进度
-                        if save_counter % 20 == 0:
-                            save_translation_cache(translation_cache)
-                except Exception as e:
-                    print(f"❌ 处理推文出错: {str(e)}")
+        # 批量翻译（每 BATCH_SIZE 条一组，大幅减少 API 调用）
+        all_texts = [t[0] for t in to_process]
+        all_langs = [t[1] for t in to_process]
+        all_created = [t[2] for t in to_process]
+
+        print(f"🚀 批量翻译 {len(all_texts)} 条推文（每批 {BATCH_SIZE} 条）...")
+        batch_results = deepseek_translate_batch(all_texts, all_langs)
+
+        # 收集结果
+        save_counter = 0
+        for i, (original, lang, created) in enumerate(zip(all_texts, all_langs, all_created)):
+            translated_text = batch_results[i]
+            if translated_text:
+                translated.append(translated_text)
+                translated_data.append({
+                    "original": original,
+                    "translated": translated_text,
+                    "detected_language": lang,
+                    "created_at": created
+                })
+                save_counter += 1
+                if save_counter % 50 == 0:
+                    save_translation_cache(translation_cache)
+
+        # 最终保存缓存
+        save_translation_cache(translation_cache)
+        print(f"✅ 批量翻译完成，节省约 {len(all_texts) // BATCH_SIZE} 倍 API 调用\n")
         
         # 显示语言统计
         print(f"\n📊 语言分布统计:")
