@@ -40,8 +40,13 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description="翻译同步/重翻工具")
+    parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--force", action="store_true", help="强制重新翻译所有推文（忽略缓存和现有翻译）")
     args = parser.parse_args()
+
+    if args.user:
+        global TARGET_USERNAME
+        TARGET_USERNAME = args.user
 
     print("=" * 60)
     print(f"🔄 翻译同步工具 (Translation Sync)")

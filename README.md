@@ -82,6 +82,8 @@ xcrawler/
 ├── analyze_only.py              # 快速分析：仅兴趣画像（不抓取数据）
 ├── visualize.py                 # 数据可视化：图表生成 🆕
 ├── analyze_network.py           # Hashtag/Mention 网络分析 🆕
+├── analyze_sentiment.py         # 情感分析：正/中/负打分 + 趋势图 🆕
+├── export_csv.py                # CSV 导出：推文/翻译/兴趣导出 🆕
 ├── refetch_data.sh              # 🌟 智能抓取脚本：支持全量/增量模式（推荐使用）
 ├── requirements.txt             # 依赖包列表
 ├── .env                         # 环境变量配置（需自行创建）
@@ -92,6 +94,9 @@ xcrawler/
 │   ├── {username}_interest_profile.json   # 专业兴趣画像 🆕
 │   ├── {username}_behavior.json           # 行为模式分析
 │   ├── {username}_network.json            # Hashtag/Mention 分析 🆕
+│   ├── {username}_profile.json            # 用户基础信息 🆕
+│   ├── {username}_sentiment.json          # 情感分析结果 🆕
+│   ├── {username}_failed.json             # 翻译失败列表（自动重试）🆕
 │   ├── {username}_report.html             # 可视化报告 🆕
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
@@ -454,6 +459,39 @@ python3 analyze_network.py -u MiracleHe --top 30
 - `cache/charts/{username}_hashtags.png` - Hashtag 柱状图
 - `cache/charts/{username}_mentions.png` - Mention 柱状图
 - `cache/{username}_network.json` - 完整分析数据
+
+### 7. 情感分析 🆕
+
+```bash
+# 对翻译后的推文做情感打分
+python3 analyze_sentiment.py
+
+# 指定用户
+python3 analyze_sentiment.py -u MiracleHe --top 10
+```
+
+输出：
+- `cache/charts/{username}_sentiment.png` - 情感时间趋势图
+- `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
+- `cache/{username}_sentiment.json` - 情感分析数据
+
+### 8. CSV 导出 🆕
+
+```bash
+# 导出所有数据为 CSV
+python3 export_csv.py
+
+# 只导出翻译数据
+python3 export_csv.py --type translations
+
+# 指定用户和输出目录
+python3 export_csv.py -u MiracleHe --output ./my_data
+```
+
+输出文件（默认在 `cache/csv/`）：
+- `{username}_tweets.csv` - 原始推文（含 hashtag/mention 列）
+- `{username}_translations.csv` - 原文 + 翻译 + 语言
+- `{username}_interests.csv` - 兴趣标签 + 置信度
 
 ## 🌐 多语言翻译功能
 
@@ -828,7 +866,16 @@ chmod +x refetch_data.sh
 
 ## 🔄 更新日志
 
-### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析 🆕
+### v2.9.0 - 用户画像增强 + 情感分析 + CSV 导出 🆕
+- ✅ **用户信息抓取**：自动获取目标用户的 bio、粉丝数、关注数等基础信息
+- ✅ **情感分析**：新增 `analyze_sentiment.py`，批量正/中/负打分，生成趋势图和饼图
+- ✅ **CSV 导出**：新增 `export_csv.py`，推文/翻译/兴趣一键导出为 Excel 可打开的 CSV
+- ✅ **失败重试**：翻译失败的条目自动保存为 `_failed.json`，下次运行优先重试
+- ✅ **翻译进度**：批量翻译现在实时显示批次进度
+- ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
+- ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
+
+### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析
 - ✅ **批量翻译**：`deepseek_translate_batch()` 每批 10 条合并为一次 API 调用，费用降低 5-10 倍
 - ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等参数，CLI 覆盖 .env
 - ✅ **数据可视化**：新增 `visualize.py`，生成 24 小时热力图、语言分布饼图、兴趣标签图、HTML 报告

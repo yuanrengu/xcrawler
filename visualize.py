@@ -15,6 +15,14 @@ TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 CACHE_DIR = "cache"
 
 
+def _parse_dt(dt_str: str) -> datetime:
+    """解析 Twitter 时间戳，兼容有/无微秒"""
+    try:
+        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError:
+        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="数据可视化：生成分析图表")
     parser.add_argument("-u", "--user", help="目标用户名")
@@ -57,10 +65,7 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
     for tweet in raw_tweets:
         if "created_at" not in tweet:
             continue
-        try:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-        except ValueError:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+        dt_utc = _parse_dt(tweet["created_at"])
         from datetime import timedelta
         dt_local = dt_utc + timedelta(hours=tz_offset)
         hour_counts[dt_local.hour] += 1
@@ -112,10 +117,7 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
     for tweet in raw_tweets:
         if "created_at" not in tweet:
             continue
-        try:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-        except ValueError:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+        dt_utc = _parse_dt(tweet["created_at"])
         dt_local = dt_utc + timedelta(hours=tz_offset)
         weekday_counts[dt_local.weekday()] += 1
 

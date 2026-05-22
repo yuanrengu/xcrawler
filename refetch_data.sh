@@ -109,7 +109,7 @@ exit_code=$?
 if [ $exit_code -eq 0 ]; then
     echo ""
     echo "🌍 同步翻译数据..."
-    python3 translate_sync.py
+    python3 translate_sync.py --user "$TARGET_USERNAME"
 fi
 
 echo "=================================================="
