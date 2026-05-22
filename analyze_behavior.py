@@ -53,8 +53,11 @@ def analyze_time_patterns(raw_tweets):
         if "created_at" not in tweet:
             continue
         
-        # 解析UTC时间并转换为日本时间
-        dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        # 解析UTC时间并转换为本地时间（兼容有/无微秒格式）
+        try:
+            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%SZ")
         dt_jst = dt_utc + JST_OFFSET
         
         hour = dt_jst.hour
