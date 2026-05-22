@@ -41,12 +41,15 @@ def parse_args():
     return parser.parse_args()
 
 # ======================
-# 初始化客户端和缓存
+# 初始化客户端和缓存（lazy，首次调用时创建）
 # ======================
-ds_client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url=DEEPSEEK_BASE_URL
-)
+ds_client = None
+
+def _get_ds_client():
+    global ds_client
+    if ds_client is None:
+        ds_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    return ds_client
 
 # embed_model moved to main()
 
@@ -141,7 +144,7 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
     # 重试机制
     for attempt in range(MAX_RETRIES):
         try:
-            r = ds_client.chat.completions.create(
+            r = _get_ds_client().chat.completions.create(
                 model=LLM_MODEL,
                 messages=[{"role": "user", "content": p}],
                 temperature=0.1
@@ -216,12 +219,16 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         return results
 
     # 2. 分批调用 API
-    for batch_start in range(0, len(to_translate_texts), BATCH_SIZE):
+    total_batches = (len(to_translate_texts) + BATCH_SIZE - 1) // BATCH_SIZE
+    translated_count = 0
+    for batch_idx, batch_start in enumerate(range(0, len(to_translate_texts), BATCH_SIZE)):
         batch_end = batch_start + BATCH_SIZE
         batch_indices = to_translate_indices[batch_start:batch_end]
         batch_texts = to_translate_texts[batch_start:batch_end]
         batch_langs = to_translate_langs[batch_start:batch_end]
         batch_size = len(batch_texts)
+
+        print(f"   📦 批次 [{batch_idx + 1}/{total_batches}] 翻译 {batch_size} 条...", end="", flush=True)
 
         # 构建编号列表
         numbered_lines = "\n".join(f"[{j+1}] {t}" for j, t in enumerate(batch_texts))
@@ -247,7 +254,7 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         # 重试
         for attempt in range(MAX_RETRIES):
             try:
-                r = ds_client.chat.completions.create(
+                r = _get_ds_client().chat.completions.create(
                     model=LLM_MODEL,
                     messages=[{"role": "user", "content": p}],
                     temperature=0.1
@@ -262,6 +269,8 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
                         results[idx] = parsed[j]
                         if use_cache:
                             translation_cache[texts[idx]] = parsed[j]
+                        translated_count += 1
+                print(f" ✅ 已翻译 {translated_count}/{len(to_translate_texts)} 条")
                 break
             except Exception as e:
                 if attempt < MAX_RETRIES - 1:
@@ -323,7 +332,7 @@ def deepseek_profile_summary(cluster_text):
     
     for attempt in range(MAX_RETRIES):
         try:
-            r = ds_client.chat.completions.create(
+            r = _get_ds_client().chat.completions.create(
                 model=LLM_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3
@@ -355,6 +364,39 @@ def get_user_id(username: str) -> str:
         return data["data"]["id"]
     except requests.exceptions.RequestException as e:
         raise Exception(f"获取用户ID失败: {str(e)}")
+
+
+def get_user_profile(username: str) -> dict | None:
+    """获取用户基础信息（bio、粉丝数、关注数等）"""
+    url = f"https://api.twitter.com/2/users/by/username/{username}"
+    params = {
+        "user.fields": "description,public_metrics,created_at,profile_image_url,verified,location"
+    }
+    try:
+        response = requests.get(url, headers=HEADERS, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        if "data" not in data:
+            return None
+        user = data["data"]
+        metrics = user.get("public_metrics", {})
+        profile = {
+            "username": username,
+            "name": user.get("name", ""),
+            "description": user.get("description", ""),
+            "location": user.get("location", ""),
+            "verified": user.get("verified", False),
+            "created_at": user.get("created_at", ""),
+            "profile_image_url": user.get("profile_image_url", ""),
+            "followers_count": metrics.get("followers_count", 0),
+            "following_count": metrics.get("following_count", 0),
+            "tweet_count": metrics.get("tweet_count", 0),
+            "listed_count": metrics.get("listed_count", 0),
+        }
+        return profile
+    except Exception as e:
+        print(f"⚠️ 获取用户信息失败: {str(e)}")
+        return None
 
 def fetch_tweets(user_id: str) -> list[dict]:
     """抓取推文，带错误处理和进度显示"""
@@ -465,6 +507,21 @@ def main():
         user_id = get_user_id(TARGET_USERNAME)
         print(f"✅ 用户 ID: {user_id}\n")
 
+        # 1.5 获取用户基础信息
+        print("👤 获取用户基础信息...")
+        profile_info = get_user_profile(TARGET_USERNAME)
+        if profile_info:
+            profile_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_profile.json")
+            with open(profile_file, 'w', encoding='utf-8') as f:
+                json.dump(profile_info, f, ensure_ascii=False, indent=2)
+            print(f"   粉丝: {profile_info['followers_count']}  关注: {profile_info['following_count']}  推文: {profile_info['tweet_count']}")
+            if profile_info.get("description"):
+                desc = profile_info["description"][:80]
+                print(f"   简介: {desc}{'...' if len(profile_info['description']) > 80 else ''}")
+            print(f"💾 用户信息已保存至: {profile_file}\n")
+        else:
+            print("⚠️ 无法获取用户信息，继续执行\n")
+
         # 2. 抓取推文
         print("📥 抓取推文（已排除转发和回复）...")
         raw_tweets = fetch_tweets(user_id)
@@ -510,6 +567,7 @@ def main():
         batch_results = deepseek_translate_batch(all_texts, all_langs)
 
         # 收集结果
+        failed_list = []
         save_counter = 0
         for i, (original, lang, created) in enumerate(zip(all_texts, all_langs, all_created)):
             translated_text = batch_results[i]
@@ -524,10 +582,21 @@ def main():
                 save_counter += 1
                 if save_counter % 50 == 0:
                     save_translation_cache(translation_cache)
+            else:
+                failed_list.append({"original": original, "detected_language": lang, "created_at": created})
 
         # 最终保存缓存
         save_translation_cache(translation_cache)
-        print(f"✅ 批量翻译完成，节省约 {len(all_texts) // BATCH_SIZE} 倍 API 调用\n")
+        batches = max(1, len(all_texts) // BATCH_SIZE)
+        print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
+
+        # 保存失败列表供下次重试
+        if failed_list:
+            failed_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_failed.json")
+            with open(failed_file, 'w', encoding='utf-8') as f:
+                json.dump(failed_list, f, ensure_ascii=False, indent=2)
+            print(f"⚠️ {len(failed_list)} 条翻译失败，已保存至: {failed_file}")
+            print(f"   下次运行将自动重试\n")
         
         # 显示语言统计
         print(f"\n📊 语言分布统计:")
