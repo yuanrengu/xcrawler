@@ -735,6 +735,17 @@ chmod +x refetch_data.sh
 
 ## 🔄 更新日志
 
+### v2.7.0 - 代码质量与健壮性提升 🆕
+- ✅ **配置统一**：`analyze_pro.py` 环境变量统一为 `DEEPSEEK_BASE_URL`，与其他脚本一致
+- ✅ **动态时区**：`analyze_behavior.py` 时区显示改为动态 `UTC+N`，不再硬编码"日本时间"
+- ✅ **异常处理**：`main.py` 裸 `except` 改为 `except Exception`，避免吞掉系统信号
+- ✅ **解析容错**：`datetime` 解析兼容有/无微秒的时间戳格式（`fetch_more_history.py`、`analyze_behavior.py`）
+- ✅ **缓存保护**：`main.py` 翻译过程中每 20 条自动保存缓存，防止崩溃丢失进度
+- ✅ **强制备份**：`translate_sync.py --force` 模式现在会先备份旧翻译文件为 `.bak`
+- ✅ **代码去重**：`analyze_only.py` 改为从 `main.py` 导入公共函数，消除重复代码
+- ✅ **延迟加载**：`analyze_only.py` 向量模型改为函数内 lazy import，避免 import 时加载 300MB 模型
+- ✅ **文档修正**：README MAX_PAGES 数值对齐、QUICK_START 换用户方式更新、多处时区描述修正
+
 ### v2.6.0 - 翻译同步与修复 🆕
 - ✅ **独立同步工具**：新增 `translate_sync.py`，支持增量翻译和强制重翻 (`--force`)
 - ✅ **智能依赖处理**：`main.py` 和同步脚本支持可选依赖（如 `langdetect` 缺失时自动降级）
