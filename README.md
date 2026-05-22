@@ -104,7 +104,7 @@ xcrawler/
 | **命令** | `./refetch_data.sh` | `./refetch_data.sh -i` |
 | **调用脚本** | `main.py` | `fetch_more_history.py` |
 | **数据处理** | 备份旧数据，重新抓取 | 保留现有，补充新数据（向前）+ 补全历史（向后） |
-| **API消耗** | 高（100页=10000条） | 低（10页=1000条） |
+| **API消耗** | 高（50页=5000条） | 低（10页=1000条） |
 | **适用场景** | 首次使用、重新开始 | 日常更新、Free API |
 | **执行时间** | 较长（完整抓取） | 较短（仅补充） |
 | **数据安全** | 自动备份到 `cache_backup/` | 直接追加，无备份 |
@@ -565,7 +565,7 @@ MODEL = os.getenv("LLM_MODEL", "deepseek-chat")          # LLM 模型
 ```python
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
 CACHE_DIR = "cache"            # 缓存目录
-JST_OFFSET = timedelta(hours=9)  # 时区偏移（日本时区 UTC+9）
+TIMEZONE_OFFSET = 9            # 时区偏移（UTC+N），默认9（日本），中国设为8
 ```
 
 **多用户配置详见：** [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
@@ -617,7 +617,7 @@ huggingface-hub>=0.19.0
 
 | 模式 | 命令 | 适用场景 | 数据处理 | API消耗 |
 |------|------|----------|----------|---------|
-| **全量抓取** | `./refetch_data.sh` | 首次使用、重新开始 | 备份旧数据，重新抓取 | 高（100页） |
+| **全量抓取** | `./refetch_data.sh` | 首次使用、重新开始 | 备份旧数据，重新抓取 | 高（50页） |
 | **增量抓取** | `./refetch_data.sh -i` | 日常更新、Free API | 保留现有，补充新发布（向前）+ 补全历史（向后） | 低（10页） |
 
 #### 自动功能
