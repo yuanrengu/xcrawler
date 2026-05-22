@@ -1,0 +1,234 @@
+"""
+Hashtag / Mention 网络分析
+从原始推文数据中提取 hashtag 和 @mention，生成统计和可视化
+"""
+import os
+import json
+import argparse
+from datetime import datetime
+from collections import Counter
+
+from dotenv import load_dotenv
+_ = load_dotenv()
+
+TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
+CACHE_DIR = "cache"
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Hashtag / Mention 网络分析")
+    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    parser.add_argument("--top", type=int, default=20, help="显示 Top N 结果（默认 20）")
+    parser.add_argument("--output", help="输出目录（默认 cache/charts）")
+    return parser.parse_args()
+
+
+def extract_entities(raw_tweets):
+    """从推文中提取 hashtags 和 mentions"""
+    hashtag_counts = Counter()
+    mention_counts = Counter()
+    hashtag_mention_pairs = Counter()  # 共现关系
+
+    for tweet in raw_tweets:
+        entities = tweet.get("entities", {})
+        hashtags_in_tweet = []
+        mentions_in_tweet = []
+
+        # 提取 hashtags
+        for ht in entities.get("hashtags", []):
+            tag = ht.get("tag", "").lower()
+            if tag:
+                hashtag_counts[tag] += 1
+                hashtags_in_tweet.append(tag)
+
+        # 提取 mentions
+        for mention in entities.get("mentions", []):
+            username = mention.get("username", "").lower()
+            if username:
+                mention_counts[username] += 1
+                mentions_in_tweet.append(username)
+
+        # 共现：同一条推文中的 hashtag-mention 对
+        for ht in hashtags_in_tweet:
+            for mn in mentions_in_tweet:
+                pair = f"#{ht} ↔ @{mn}"
+                hashtag_mention_pairs[pair] += 1
+
+    return hashtag_counts, mention_counts, hashtag_mention_pairs
+
+
+def extract_hashtags_from_text(raw_tweets):
+    """从推文文本中提取 hashtag（entities 可能为空时的后备方案）"""
+    import re
+    hashtag_counts = Counter()
+    for tweet in raw_tweets:
+        text = tweet.get("text", "")
+        tags = re.findall(r'#(\w+)', text)
+        for tag in tags:
+            hashtag_counts[tag.lower()] += 1
+    return hashtag_counts
+
+
+def print_stats(hashtag_counts, mention_counts, pair_counts, top_n):
+    """打印统计结果"""
+    print("🏷️  Top Hashtags:")
+    if hashtag_counts:
+        for tag, count in hashtag_counts.most_common(top_n):
+            bar = "█" * min(count, 30)
+            print(f"   #{tag:20s} {count:4d}  {bar}")
+    else:
+        print("   (无数据)")
+
+    print()
+    print("👤 Top Mentions:")
+    if mention_counts:
+        for user, count in mention_counts.most_common(top_n):
+            bar = "█" * min(count, 30)
+            print(f"   @{user:20s} {count:4d}  {bar}")
+    else:
+        print("   (无数据)")
+
+    if pair_counts:
+        print()
+        print("🔗 Top Hashtag-Mention Pairs:")
+        for pair, count in pair_counts.most_common(min(10, top_n)):
+            print(f"   {pair:40s} {count:3d}")
+
+
+def chart_hashtag_bar(hashtag_counts, output_dir, username, top_n=20):
+    """生成 hashtag 柱状图"""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    top = hashtag_counts.most_common(top_n)
+    if not top:
+        return None
+
+    tags = [f"#{t}" for t, _ in top]
+    counts = [c for _, c in top]
+
+    fig, ax = plt.subplots(figsize=(10, max(5, len(tags) * 0.4)))
+    y_pos = range(len(tags))
+    ax.barh(y_pos, counts, color='#1976D2', edgecolor='white')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(tags, fontsize=10)
+    ax.invert_yaxis()
+    ax.set_xlabel('Frequency', fontsize=12)
+    ax.set_title(f'@{username} - Top {top_n} Hashtags', fontsize=14)
+    ax.grid(axis='x', alpha=0.3)
+
+    plt.tight_layout()
+    path = os.path.join(output_dir, f"{username}_hashtags.png")
+    plt.savefig(path, dpi=150)
+    plt.close()
+    print(f"   ✅ Hashtag 柱状图: {path}")
+    return path
+
+
+def chart_mention_bar(mention_counts, output_dir, username, top_n=20):
+    """生成 mention 柱状图"""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    top = mention_counts.most_common(top_n)
+    if not top:
+        return None
+
+    users = [f"@{u}" for u, _ in top]
+    counts = [c for _, c in top]
+
+    fig, ax = plt.subplots(figsize=(10, max(5, len(users) * 0.4)))
+    y_pos = range(len(users))
+    ax.barh(y_pos, counts, color='#FF7043', edgecolor='white')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(users, fontsize=10)
+    ax.invert_yaxis()
+    ax.set_xlabel('Frequency', fontsize=12)
+    ax.set_title(f'@{username} - Top {top_n} Mentions', fontsize=14)
+    ax.grid(axis='x', alpha=0.3)
+
+    plt.tight_layout()
+    path = os.path.join(output_dir, f"{username}_mentions.png")
+    plt.savefig(path, dpi=150)
+    plt.close()
+    print(f"   ✅ Mention 柱状图: {path}")
+    return path
+
+
+def save_results(username, hashtag_counts, mention_counts, pair_counts, cache_dir):
+    """保存分析结果到 JSON"""
+    result = {
+        "username": username,
+        "analysis_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "hashtags": dict(hashtag_counts.most_common(100)),
+        "mentions": dict(mention_counts.most_common(100)),
+        "hashtag_mention_pairs": dict(pair_counts.most_common(50))
+    }
+
+    path = os.path.join(cache_dir, f"{username}_network.json")
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    print(f"\n💾 结果已保存: {path}")
+    return path
+
+
+def main():
+    global TARGET_USERNAME, CACHE_DIR
+
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.cache_dir:
+        CACHE_DIR = args.cache_dir
+    output_dir = args.output or os.path.join(CACHE_DIR, "charts")
+    os.makedirs(output_dir, exist_ok=True)
+
+    print("=" * 60)
+    print(f"🏷️  Hashtag / Mention 网络分析: @{TARGET_USERNAME}")
+    print("=" * 60 + "\n")
+
+    # 加载数据
+    raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
+    if not os.path.exists(raw_file):
+        print(f"❌ 找不到原始推文: {raw_file}")
+        print("   请先运行 main.py 抓取数据")
+        return
+
+    with open(raw_file, 'r', encoding='utf-8') as f:
+        raw_tweets = json.load(f)
+    print(f"📂 已加载 {len(raw_tweets)} 条推文\n")
+
+    # 提取实体
+    print("🔍 提取 Hashtags 和 Mentions...")
+    hashtag_counts, mention_counts, pair_counts = extract_entities(raw_tweets)
+
+    # 如果 entities 为空，从文本提取 hashtag
+    if not hashtag_counts:
+        print("   ⚠️ entities 字段为空，从文本中提取 hashtag...")
+        hashtag_counts = extract_hashtags_from_text(raw_tweets)
+
+    # 打印统计
+    print()
+    print_stats(hashtag_counts, mention_counts, pair_counts, args.top)
+
+    # 生成图表
+    print("\n🎨 生成图表...")
+    chart_hashtag_bar(hashtag_counts, output_dir, TARGET_USERNAME, args.top)
+    chart_mention_bar(mention_counts, output_dir, TARGET_USERNAME, args.top)
+
+    # 保存结果
+    save_results(TARGET_USERNAME, hashtag_counts, mention_counts, pair_counts, CACHE_DIR)
+
+    print("\n" + "=" * 60)
+    print(f"✅ 分析完成！")
+    print(f"   Hashtags: {len(hashtag_counts)} 个")
+    print(f"   Mentions: {len(mention_counts)} 个")
+    print(f"   Pairs: {len(pair_counts)} 个")
+    print("=" * 60 + "\n")
+
+
+if __name__ == "__main__":
+    main()

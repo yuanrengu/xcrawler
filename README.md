@@ -60,6 +60,8 @@ xcrawler/
 ├── analyze_behavior.py          # 行为分析：时间模式 + 生活事件
 ├── translate_sync.py            # 翻译同步：增量翻译/重翻工具 🆕
 ├── analyze_only.py              # 快速分析：仅兴趣画像（不抓取数据）
+├── visualize.py                 # 数据可视化：图表生成 🆕
+├── analyze_network.py           # Hashtag/Mention 网络分析 🆕
 ├── refetch_data.sh              # 🌟 智能抓取脚本：支持全量/增量模式（推荐使用）
 ├── requirements.txt             # 依赖包列表
 ├── .env                         # 环境变量配置（需自行创建）
@@ -69,6 +71,8 @@ xcrawler/
 │   ├── {username}_analysis.json           # 聚类分析结果
 │   ├── {username}_interest_profile.json   # 专业兴趣画像 🆕
 │   ├── {username}_behavior.json           # 行为模式分析
+│   ├── {username}_network.json            # Hashtag/Mention 分析 🆕
+│   ├── {username}_report.html             # 可视化报告 🆕
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
@@ -735,7 +739,13 @@ chmod +x refetch_data.sh
 
 ## 🔄 更新日志
 
-### v2.7.0 - 代码质量与健壮性提升 🆕
+### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析 🆕
+- ✅ **批量翻译**：`deepseek_translate_batch()` 每批 10 条合并为一次 API 调用，费用降低 5-10 倍
+- ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等参数，CLI 覆盖 .env
+- ✅ **数据可视化**：新增 `visualize.py`，生成 24 小时热力图、语言分布饼图、兴趣标签图、HTML 报告
+- ✅ **网络分析**：新增 `analyze_network.py`，提取高频 hashtag、@mention 和共现关系
+
+### v2.7.0 - 代码质量与健壮性提升
 - ✅ **配置统一**：`analyze_pro.py` 环境变量统一为 `DEEPSEEK_BASE_URL`，与其他脚本一致
 - ✅ **动态时区**：`analyze_behavior.py` 时区显示改为动态 `UTC+N`，不再硬编码"日本时间"
 - ✅ **异常处理**：`main.py` 裸 `except` 改为 `except Exception`，避免吞掉系统信号
