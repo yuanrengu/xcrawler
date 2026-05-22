@@ -13,7 +13,7 @@ from openai import OpenAI
 load_dotenv()
 
 API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com")
+BASE_URL = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com")
 MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取目标用户名
 

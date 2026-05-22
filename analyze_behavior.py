@@ -36,6 +36,7 @@ def analyze_time_patterns(raw_tweets):
     # UTC+N 时区偏移，默认+9 (日本/韩国)
     tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
     JST_OFFSET = timedelta(hours=tz_offset)
+    tz_label = f"UTC+{int(tz_offset)}" if tz_offset == int(tz_offset) else f"UTC+{tz_offset}"
     
     hour_counts = Counter()
     weekday_counts = Counter()
@@ -93,7 +94,8 @@ def analyze_time_patterns(raw_tweets):
         "time_period_counts": time_period_counts,
         "top_active_hours": [(f"{h}:00", count) for h, count in top_hours],
         "top_active_weekdays": [(weekday_names[d], count) for d, count in top_weekdays],
-        "total_tweets": len(raw_tweets)
+        "total_tweets": len(raw_tweets),
+        "tz_label": tz_label
     }
 
 def detect_life_events(translated_data):
@@ -273,7 +275,7 @@ def main():
     print(f"📊 总推文数: {time_analysis['total_tweets']}")
     print(f"📅 工作日 vs 周末: {time_analysis['weekend_vs_weekday']['weekday']} vs {time_analysis['weekend_vs_weekday']['weekend']}")
     
-    print(f"\n🕐 最活跃时段（日本时间）:")
+    print(f"\n🕐 最活跃时段（{time_analysis['tz_label']}）:")
     for hour, count in time_analysis['top_active_hours']:
         print(f"   {hour} - {count}条推文")
     

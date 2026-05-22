@@ -72,7 +72,7 @@ if [ "$MODE" = "incremental" ]; then
     echo "   MAX_PAGES = 10 (避免API限流)"
 else
     echo "   模式: 全量重新抓取"
-    echo "   MAX_PAGES = 100 (可抓取1000条)"
+    echo "   MAX_PAGES = 50 (可抓取5000条)"
 fi
 echo "   TARGET_USERNAME = $TARGET_USERNAME"
 echo ""
