@@ -71,7 +71,7 @@ import json
 from datetime import datetime
 from collections import Counter
 
-with open('cache/pnyq_n_raw_tweets.json') as f:
+with open('cache/MiracleHe_raw_tweets.json') as f:
     tweets = json.load(f)
 
 dates = [datetime.strptime(t['created_at'], '%Y-%m-%dT%H:%M:%S.%fZ') for t in tweets]
@@ -96,13 +96,13 @@ for y in sorted(years.keys()):
 ```bash
 # 获取用户ID
 USER_ID=$(curl -s -H "Authorization: Bearer $X_BEARER_TOKEN" \
-  "https://api.twitter.com/2/users/by/username/pnyq_n" | \
+  "https://api.twitter.com/2/users/by/username/MiracleHe" | \
   jq -r '.data.id')
 
 echo "User ID: $USER_ID"
 
 # 获取最早的推文ID
-OLDEST_ID=$(jq -r '.[−1].id' cache/pnyq_n_raw_tweets.json)
+OLDEST_ID=$(jq -r '.[-1].id' cache/MiracleHe_raw_tweets.json)
 
 echo "Oldest ID: $OLDEST_ID"
 
@@ -168,7 +168,7 @@ pip3 install -r requirements.txt
 ```bash
 # 查看剩余配额
 curl -I -H "Authorization: Bearer $X_BEARER_TOKEN" \
-  "https://api.twitter.com/2/users/by/username/pnyq_n"
+  "https://api.twitter.com/2/users/by/username/MiracleHe"
 
 # 查看 x-rate-limit-remaining 和 x-rate-limit-reset
 ```
@@ -180,7 +180,7 @@ curl -I -H "Authorization: Bearer $X_BEARER_TOKEN" \
 修改 `fetch_more_history.py`:
 
 ```python
-TARGET_YEAR = 2023  # 或 2022
+TARGET_DATE=2023-01-01  # 在 .env 中设置更早的日期
 ### 4. 无法获取最新数据
 
 现在的脚本已经支持**双向抓取**：
@@ -199,7 +199,7 @@ python3 -c "
 import json
 from datetime import datetime
 
-with open('cache/pnyq_n_raw_tweets.json') as f:
+with open('cache/MiracleHe_raw_tweets.json') as f:
     tweets = json.load(f)
 
 dates = [datetime.strptime(t['created_at'], '%Y-%m-%dT%H:%M:%S.%fZ') for t in tweets]
@@ -275,10 +275,10 @@ python3 fetch_more_history.py
 
 ```bash
 # 抓取前备份
-cp cache/pnyq_n_raw_tweets.json cache/pnyq_n_raw_tweets.backup.json
+cp cache/MiracleHe_raw_tweets.json cache/MiracleHe_raw_tweets.backup.json
 
 # 如果出错可以恢复
-cp cache/pnyq_n_raw_tweets.backup.json cache/pnyq_n_raw_tweets.json
+cp cache/MiracleHe_raw_tweets.backup.json cache/MiracleHe_raw_tweets.json
 ```
 
 ---
