@@ -135,9 +135,10 @@ cluster_num = 5  # 固定5个主题
 
 ### 修改时区
 
-```python
-# analyze_behavior.py
-JST_OFFSET = timedelta(hours=8)  # UTC+8 (中国时区)
+编辑 `.env` 文件：
+```bash
+# 时区偏移（UTC+N），默认9（日本），中国设为8
+TIMEZONE_OFFSET=8
 ```
 
 ## 📈 输出文件说明

@@ -99,9 +99,9 @@ echo ""
 echo "🚀 开始抓取数据..."
 echo "=================================================="
 if [ "$MODE" = "incremental" ]; then
-    python3 fetch_more_history.py
+    python3 fetch_more_history.py --user "$TARGET_USERNAME"
 else
-    python3 main.py
+    python3 main.py --user "$TARGET_USERNAME"
 fi
 exit_code=$?
 
