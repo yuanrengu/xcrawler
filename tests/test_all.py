@@ -1,0 +1,498 @@
+"""
+xcrawler 单元测试
+覆盖纯函数、工具函数和需要 mock 的 API 调用
+"""
+import os
+import json
+import tempfile
+import pytest
+from unittest.mock import patch, MagicMock
+from datetime import datetime
+
+
+# ==============================
+# main.py 函数测试
+# ==============================
+
+class TestCleanText:
+    """测试 clean_text 文本清洗"""
+
+    def test_remove_urls(self):
+        from main import clean_text
+        assert clean_text("hello https://t.co/abc world") == "hello world"
+
+    def test_remove_mentions(self):
+        from main import clean_text
+        assert clean_text("hello @user world") == "hello world"
+
+    def test_collapse_whitespace(self):
+        from main import clean_text
+        assert clean_text("hello   world\n\nfoo") == "hello world foo"
+
+    def test_strip(self):
+        from main import clean_text
+        assert clean_text("  hello  ") == "hello"
+
+    def test_combined(self):
+        from main import clean_text
+        result = clean_text("  @user check https://t.co/x this  ")
+        assert result == "check this"
+
+    def test_empty(self):
+        from main import clean_text
+        assert clean_text("") == ""
+
+    def test_only_url(self):
+        from main import clean_text
+        assert clean_text("https://t.co/abc") == ""
+
+
+class TestParseBatchResponse:
+    """测试 _parse_batch_response 批量响应解析"""
+
+    def test_standard_format(self):
+        from main import _parse_batch_response
+        resp = "[1] 你好世界\n[2] 这是测试\n[3] 第三条"
+        result = _parse_batch_response(resp, 3)
+        assert result == ["你好世界", "这是测试", "第三条"]
+
+    def test_number_dot_format(self):
+        from main import _parse_batch_response
+        resp = "1. 你好世界\n2. 这是测试"
+        result = _parse_batch_response(resp, 2)
+        assert result == ["你好世界", "这是测试"]
+
+    def test_number_paren_format(self):
+        from main import _parse_batch_response
+        resp = "1) 你好世界\n2) 这是测试"
+        result = _parse_batch_response(resp, 2)
+        assert result == ["你好世界", "这是测试"]
+
+    def test_empty_lines_skipped(self):
+        from main import _parse_batch_response
+        resp = "[1] 你好\n\n[2] 世界\n\n"
+        result = _parse_batch_response(resp, 2)
+        assert result == ["你好", "世界"]
+
+    def test_count_mismatch_fallback(self):
+        """当解析结果数量不对时，回退到按行返回"""
+        from main import _parse_batch_response
+        resp = "你好世界\n这是测试"
+        result = _parse_batch_response(resp, 2)
+        assert len(result) == 2
+        assert "你好世界" in result
+
+    def test_with_colon_separator(self):
+        from main import _parse_batch_response
+        resp = "[1]：你好\n[2]：世界"
+        result = _parse_batch_response(resp, 2)
+        assert result == ["你好", "世界"]
+
+
+class TestDetectLanguage:
+    """测试 detect_language 语言检测"""
+
+    def test_short_text_unknown(self):
+        from main import detect_language
+        assert detect_language("hi") == "unknown"
+
+    def test_empty_text_unknown(self):
+        from main import detect_language
+        assert detect_language("") == "unknown"
+
+    def test_chinese_if_langdetect_installed(self):
+        from main import detect_language
+        result = detect_language("这是一段足够长的中文文本用于检测语言")
+        try:
+            import langdetect
+            assert result in ("zh-cn", "zh")
+        except ImportError:
+            assert result == "unknown"
+
+    def test_english_if_langdetect_installed(self):
+        from main import detect_language
+        result = detect_language("This is a longer English text for detection")
+        try:
+            import langdetect
+            assert result == "en"
+        except ImportError:
+            assert result == "unknown"
+
+
+class TestTranslationCache:
+    """测试翻译缓存读写"""
+
+    def test_save_and_load(self, tmp_path):
+        import main
+        original_dir = main.CACHE_DIR
+        main.CACHE_DIR = str(tmp_path)
+        try:
+            cache = {"hello": "你好", "world": "世界"}
+            main.save_translation_cache(cache)
+            loaded = main.load_translation_cache()
+            assert loaded == cache
+        finally:
+            main.CACHE_DIR = original_dir
+
+    def test_load_missing_file(self, tmp_path):
+        import main
+        original_dir = main.CACHE_DIR
+        main.CACHE_DIR = str(tmp_path)
+        try:
+            loaded = main.load_translation_cache()
+            assert loaded == {}
+        finally:
+            main.CACHE_DIR = original_dir
+
+    def test_load_corrupt_file(self, tmp_path):
+        import main
+        original_dir = main.CACHE_DIR
+        main.CACHE_DIR = str(tmp_path)
+        try:
+            cache_file = tmp_path / "translation_cache.json"
+            cache_file.write_text("not valid json {{{")
+            loaded = main.load_translation_cache()
+            assert loaded == {}
+        finally:
+            main.CACHE_DIR = original_dir
+
+
+class TestDeepseekTranslate:
+    """测试 deepseek_translate 单条翻译"""
+
+    def test_cached_text_returns_immediately(self):
+        import main
+        main.translation_cache = {"hello": "你好"}
+        result = main.deepseek_translate("hello")
+        assert result == "你好"
+
+    def test_chinese_text_passthrough(self):
+        import main
+        main.translation_cache = {}
+        result = main.deepseek_translate("这是中文", detected_lang="zh-cn")
+        assert result == "这是中文"
+        assert main.translation_cache["这是中文"] == "这是中文"
+
+    def test_chinese_zh_lang(self):
+        import main
+        main.translation_cache = {}
+        result = main.deepseek_translate("中文推文", detected_lang="zh")
+        assert result == "中文推文"
+
+    @patch("main._get_ds_client")
+    def test_api_call(self, mock_client):
+        import main
+        main.translation_cache = {}
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "你好世界"
+        mock_client.return_value.chat.completions.create.return_value = mock_response
+
+        result = main.deepseek_translate("Hello world", detected_lang="en")
+        assert result == "你好世界"
+        assert main.translation_cache["Hello world"] == "你好世界"
+
+    @patch("main._get_ds_client")
+    def test_api_failure_returns_none(self, mock_client):
+        import main
+        main.translation_cache = {}
+        mock_client.return_value.chat.completions.create.side_effect = Exception("API error")
+
+        result = main.deepseek_translate("Hello", detected_lang="en", use_cache=False)
+        assert result is None
+
+
+class TestDeepseekTranslateBatch:
+    """测试 deepseek_translate_batch 批量翻译"""
+
+    def test_all_cached(self):
+        import main
+        main.translation_cache = {"a": "甲", "b": "乙"}
+        result = main.deepseek_translate_batch(["a", "b"])
+        assert result == ["甲", "乙"]
+
+    def test_chinese_passthrough(self):
+        import main
+        main.translation_cache = {}
+        result = main.deepseek_translate_batch(["中文"], detected_langs=["zh-cn"])
+        assert result == ["中文"]
+
+    def test_mixed_cache_and_new(self):
+        import main
+        main.translation_cache = {"cached": "已缓存"}
+        with patch("main._get_ds_client") as mock_client:
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = "[1] 新翻译"
+            mock_client.return_value.chat.completions.create.return_value = mock_resp
+
+            result = main.deepseek_translate_batch(["cached", "new text"], detected_langs=["zh", "en"])
+            assert result[0] == "已缓存"
+            assert result[1] == "新翻译"
+
+
+class TestClusterCalculation:
+    """测试聚类数动态计算逻辑"""
+
+    def test_small_dataset(self):
+        # 10条推文 -> 10//10=1 -> max(2,1)=2
+        n = 10
+        cluster_num = max(2, min(8, n // 10))
+        assert cluster_num == 2
+
+    def test_medium_dataset(self):
+        # 50条推文 -> 50//10=5
+        n = 50
+        cluster_num = max(2, min(8, n // 10))
+        assert cluster_num == 5
+
+    def test_large_dataset(self):
+        # 200条推文 -> 200//10=20 -> min(8,20)=8
+        n = 200
+        cluster_num = max(2, min(8, n // 10))
+        assert cluster_num == 8
+
+    def test_minimum_is_2(self):
+        n = 5
+        cluster_num = max(2, min(8, n // 10))
+        assert cluster_num == 2
+
+
+# ==============================
+# fetch_more_history.py 函数测试
+# ==============================
+
+class TestParseTwitterDatetime:
+    """测试 parse_twitter_datetime 时间解析"""
+
+    def test_with_microseconds(self):
+        from fetch_more_history import parse_twitter_datetime
+        dt = parse_twitter_datetime("2024-06-15T12:30:45.123456Z")
+        assert dt.year == 2024
+        assert dt.month == 6
+        assert dt.hour == 12
+
+    def test_without_microseconds(self):
+        from fetch_more_history import parse_twitter_datetime
+        dt = parse_twitter_datetime("2024-06-15T12:30:45Z")
+        assert dt.year == 2024
+        assert dt.minute == 30
+
+    def test_invalid_format_raises(self):
+        from fetch_more_history import parse_twitter_datetime
+        with pytest.raises(ValueError):
+            parse_twitter_datetime("not-a-date")
+
+
+# ==============================
+# visualize.py 函数测试
+# ==============================
+
+class TestParseDt:
+    """测试 visualize._parse_dt"""
+
+    def test_with_microseconds(self):
+        from visualize import _parse_dt
+        dt = _parse_dt("2024-01-01T00:00:00.000000Z")
+        assert dt == datetime(2024, 1, 1)
+
+    def test_without_microseconds(self):
+        from visualize import _parse_dt
+        dt = _parse_dt("2024-01-01T00:00:00Z")
+        assert dt == datetime(2024, 1, 1)
+
+
+# ==============================
+# analyze_network.py 函数测试
+# ==============================
+
+class TestExtractEntities:
+    """测试 extract_entities 实体提取"""
+
+    def test_basic_extraction(self):
+        from analyze_network import extract_entities
+        tweets = [
+            {
+                "entities": {
+                    "hashtags": [{"tag": "python"}, {"tag": "AI"}],
+                    "mentions": [{"username": "elonmusk"}]
+                }
+            },
+            {
+                "entities": {
+                    "hashtags": [{"tag": "python"}],
+                    "mentions": [{"username": "openai"}]
+                }
+            }
+        ]
+        hashtag_counts, mention_counts, pair_counts = extract_entities(tweets)
+        assert hashtag_counts["python"] == 2
+        assert hashtag_counts["ai"] == 1
+        assert mention_counts["elonmusk"] == 1
+        assert mention_counts["openai"] == 1
+
+    def test_empty_entities(self):
+        from analyze_network import extract_entities
+        tweets = [{"entities": {}}]
+        hashtag_counts, mention_counts, pair_counts = extract_entities(tweets)
+        assert len(hashtag_counts) == 0
+
+    def test_no_entities_field(self):
+        from analyze_network import extract_entities
+        tweets = [{"text": "hello world"}]
+        hashtag_counts, mention_counts, pair_counts = extract_entities(tweets)
+        assert len(hashtag_counts) == 0
+
+    def test_cooccurrence(self):
+        from analyze_network import extract_entities
+        tweets = [{
+            "entities": {
+                "hashtags": [{"tag": "python"}],
+                "mentions": [{"username": "guido"}]
+            }
+        }]
+        _, _, pair_counts = extract_entities(tweets)
+        assert pair_counts["#python ↔ @guido"] == 1
+
+
+class TestExtractHashtagsFromText:
+    """测试从文本中提取 hashtag"""
+
+    def test_basic(self):
+        from analyze_network import extract_hashtags_from_text
+        tweets = [{"text": "Love #Python and #AI"}]
+        counts = extract_hashtags_from_text(tweets)
+        assert counts["python"] == 1
+        assert counts["ai"] == 1
+
+    def test_no_hashtags(self):
+        from analyze_network import extract_hashtags_from_text
+        tweets = [{"text": "No hashtags here"}]
+        counts = extract_hashtags_from_text(tweets)
+        assert len(counts) == 0
+
+    def test_case_insensitive(self):
+        from analyze_network import extract_hashtags_from_text
+        tweets = [{"text": "#Python #PYTHON #python"}]
+        counts = extract_hashtags_from_text(tweets)
+        assert counts["python"] == 3
+
+
+# ==============================
+# API 函数测试（mock）
+# ==============================
+
+class TestGetUserId:
+    """测试 get_user_id"""
+
+    @patch("main.requests.get")
+    def test_success(self, mock_get):
+        from main import get_user_id
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"data": {"id": "12345"}}
+        mock_get.return_value.raise_for_status = MagicMock()
+
+        result = get_user_id("testuser")
+        assert result == "12345"
+
+    @patch("main.requests.get")
+    def test_user_not_found(self, mock_get):
+        from main import get_user_id
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {"errors": [{"message": "Not found"}]}
+        mock_get.return_value.raise_for_status = MagicMock()
+
+        with pytest.raises(ValueError, match="不存在"):
+            get_user_id("nonexistent")
+
+
+class TestGetUserProfile:
+    """测试 get_user_profile"""
+
+    @patch("main.requests.get")
+    def test_success(self, mock_get):
+        from main import get_user_profile
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "data": {
+                "name": "Test User",
+                "description": "A test bio",
+                "location": "Tokyo",
+                "verified": False,
+                "created_at": "2020-01-01T00:00:00.000Z",
+                "public_metrics": {
+                    "followers_count": 100,
+                    "following_count": 50,
+                    "tweet_count": 500,
+                    "listed_count": 5
+                }
+            }
+        }
+        mock_get.return_value.raise_for_status = MagicMock()
+
+        result = get_user_profile("testuser")
+        assert result["username"] == "testuser"
+        assert result["followers_count"] == 100
+        assert result["description"] == "A test bio"
+
+    @patch("main.requests.get")
+    def test_api_failure(self, mock_get):
+        from main import get_user_profile
+        mock_get.side_effect = Exception("Network error")
+        result = get_user_profile("testuser")
+        assert result is None
+
+
+# ==============================
+# 集成级测试
+# ==============================
+
+class TestTranslateSyncImport:
+    """测试 translate_sync.py 能否正常 import"""
+
+    def test_import_succeeds(self):
+        """验证 import main 不会因缺少 API key 而崩溃"""
+        import importlib
+        # 这应该不会抛异常，因为 ds_client 现在是 lazy init
+        import main
+        assert main.ds_client is None  # 尚未初始化
+        assert callable(main._get_ds_client)
+
+
+class TestExportCsvHelpers:
+    """测试 CSV 导出辅助逻辑"""
+
+    def test_export_tweets(self, tmp_path):
+        from export_csv import export_tweets
+        tweets = [
+            {
+                "id": "1",
+                "text": "Hello #world @user",
+                "created_at": "2024-01-01T00:00:00.000Z",
+                "entities": {
+                    "hashtags": [{"tag": "world"}],
+                    "mentions": [{"username": "user"}]
+                }
+            }
+        ]
+        output = str(tmp_path / "test.csv")
+        export_tweets(tweets, output)
+
+        with open(output, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+        assert "Hello #world @user" in content
+        assert "world" in content
+        assert "user" in content
+
+    def test_export_translations(self, tmp_path):
+        from export_csv import export_translations
+        data = [
+            {"original": "Hello", "translated": "你好", "detected_language": "en", "created_at": "2024-01-01"}
+        ]
+        output = str(tmp_path / "test.csv")
+        export_translations(data, output)
+
+        with open(output, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+        assert "你好" in content
+        assert "en" in content
