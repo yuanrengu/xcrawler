@@ -111,10 +111,12 @@ def main():
     # we effectively have the full dataset.
     
     if args.force:
-        # Reset translated_data to empty if we are effectively re-doing everything?
-        # Or we can just append and then dedupe at the end? 
-        # If we re-translate, we will have duplicates if we extend `translated_data`.
-        # So we should probably start fresh.
+        # 备份旧翻译文件，防止中途崩溃导致数据丢失
+        import shutil
+        backup_path = translated_file_path + ".bak"
+        if os.path.exists(translated_file_path):
+            shutil.copy2(translated_file_path, backup_path)
+            print(f"📋 已备份旧翻译文件: {backup_path}")
         print("⚠️  强制模式：将覆盖现有的翻译文件")
         translated_data = [] 
 

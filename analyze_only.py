@@ -1,64 +1,18 @@
 import os
 import json
-from openai import OpenAI
-from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
-from dotenv import load_dotenv
 from datetime import datetime
 
 # 禁用 tokenizers 并行警告
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# 从 main.py 导入公共函数
+from main import deepseek_profile_summary, CACHE_DIR
+
+from dotenv import load_dotenv
 _ = load_dotenv()
 
-# ======================
-# 配置
-# ======================
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
-CACHE_DIR = "cache"
-
-# ======================
-# 初始化客户端
-# ======================
-ds_client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url=DEEPSEEK_BASE_URL
-)
-
-print("🔄 加载向量模型...")
-embed_model = SentenceTransformer(
-    "paraphrase-multilingual-MiniLM-L12-v2"
-)
-
-def deepseek_profile_summary(cluster_text):
-    """生成用户画像，支持重试"""
-    prompt = f"""
-你是一名数据分析师。
-
-请根据以下推文主题，总结该用户的：
-1. 核心兴趣（1-3 个）
-2. 次要兴趣
-3. 内容风格
-4. 情绪倾向
-
-要求：
-- 使用简体中文
-- 偏客观分析
-- 输出结构化结果
-
-推文主题内容：
-{cluster_text}
-"""
-    
-    r = ds_client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return r.choices[0].message.content.strip()
+TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 
 def main():
     print("=" * 60)
@@ -93,6 +47,11 @@ def main():
     cluster_num = max(2, min(8, len(translated) // 10))
     print(f"🔢 向量化 + 聚类（聚类数: {cluster_num}）...")
     
+    # Lazy import 向量模型
+    from sentence_transformers import SentenceTransformer
+    print("🔄 加载向量模型...")
+    embed_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    
     vectors = embed_model.encode(translated)
     labels = KMeans(n_clusters=cluster_num, random_state=42).fit_predict(vectors)
     
@@ -106,7 +65,7 @@ def main():
         print(f"   主题 {k}: {len(v)} 条推文")
     print()
     
-    # 3. 生成画像
+    # 3. 生成画像（使用 main.py 中的公共函数）
     cluster_text = ""
     for k, v in sorted(clusters.items()):
         cluster_text += f"\n【主题 {k}】（共 {len(v)} 条）\n"

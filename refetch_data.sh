@@ -77,7 +77,7 @@ fi
 echo "   TARGET_USERNAME = $TARGET_USERNAME"
 echo ""
 
-# 3. 检查依赖
+# 4. 检查依赖
 echo "🔍 检查依赖..."
 python3 -c "import requests, openai, dotenv, langdetect" 2>/dev/null
 if [ $? -ne 0 ]; then
@@ -95,7 +95,7 @@ else
 fi
 echo ""
 
-# 4. 运行抓取
+# 5. 运行抓取
 echo "🚀 开始抓取数据..."
 echo "=================================================="
 if [ "$MODE" = "incremental" ]; then
@@ -105,7 +105,7 @@ else
 fi
 exit_code=$?
 
-# 4.1 运行翻译同步 (新增)
+# 5.1 运行翻译同步 (新增)
 if [ $exit_code -eq 0 ]; then
     echo ""
     echo "🌍 同步翻译数据..."
@@ -115,7 +115,7 @@ fi
 echo "=================================================="
 echo ""
 
-# 5. 验证结果
+# 6. 验证结果
 if [ $exit_code -eq 0 ]; then
     echo "✅ 抓取完成！正在分析数据..."
     echo ""

@@ -6,6 +6,9 @@
 cache/
 cache_backup/
 
+# 翻译备份文件
+*.bak
+
 # 环境变量文件（包含API密钥等敏感信息）
 .env
 .env.local
