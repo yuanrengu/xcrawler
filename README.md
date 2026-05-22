@@ -100,6 +100,8 @@ xcrawler/
 │   ├── {username}_report.html             # 可视化报告 🆕
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
+├── tests/                       # 单元测试 🆕
+│   └── test_all.py                      # 51 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -725,6 +727,11 @@ torch>=2.0.0
 huggingface-hub>=0.19.0
 ```
 
+### 测试依赖
+```
+pytest>=7.0.0               # 单元测试框架（可选）
+```
+
 ## 🛠️ 便捷脚本使用
 
 ### refetch_data.sh - 智能数据抓取脚本
@@ -864,6 +871,44 @@ chmod +x refetch_data.sh
 - 修改 `.env` 中的 `TARGET_USERNAME` 即可切换用户
 - 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
 
+## 🧪 运行测试
+
+项目包含 51 个单元测试，使用 pytest 运行：
+
+```bash
+# 安装 pytest（如果未安装）
+pip3 install pytest
+
+# 运行所有测试
+python3 -m pytest tests/test_all.py -v
+
+# 运行特定测试类
+python3 -m pytest tests/test_all.py::TestCleanText -v
+
+# 查看测试覆盖率概览
+python3 -m pytest tests/test_all.py --tb=short
+```
+
+### 测试覆盖范围
+
+| 测试类 | 数量 | 覆盖内容 |
+|--------|------|----------|
+| TestCleanText | 7 | 文本清洗（URL/@/空白） |
+| TestParseBatchResponse | 6 | 批量翻译响应解析 |
+| TestDetectLanguage | 4 | 语言检测 + 容错 |
+| TestTranslationCache | 3 | 缓存读写/损坏恢复 |
+| TestDeepseekTranslate | 5 | 单条翻译 + mock API |
+| TestDeepseekTranslateBatch | 3 | 批量翻译 + mock API |
+| TestClusterCalculation | 4 | 聚类数动态计算 |
+| TestParseTwitterDatetime | 3 | 时间戳解析容错 |
+| TestParseDt | 2 | 可视化时间解析 |
+| TestExtractEntities | 4 | Hashtag/Mention 提取 |
+| TestExtractHashtagsFromText | 3 | 文本 Hashtag 提取 |
+| TestGetUserId | 2 | 用户 ID 获取 (mock) |
+| TestGetUserProfile | 2 | 用户信息获取 (mock) |
+| TestTranslateSyncImport | 1 | Import 不崩溃 |
+| TestExportCsvHelpers | 2 | CSV 导出 |
+
 ## 🔄 更新日志
 
 ### v2.9.0 - 用户画像增强 + 情感分析 + CSV 导出 🆕
@@ -874,6 +919,8 @@ chmod +x refetch_data.sh
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
+- ✅ **单元测试**：新增 51 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析
 - ✅ **批量翻译**：`deepseek_translate_batch()` 每批 10 条合并为一次 API 调用，费用降低 5-10 倍
