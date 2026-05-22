@@ -38,7 +38,7 @@
 - ✅ 最活跃时段和星期识别
 - ✅ 作息特征分析
 
-### 5. 生活事件检测 🆕
+### 5. 生活事件检测
 - ✅ 自动识别推文中的重要生活事件：
   - 🎂 生日相关
   - 💕 感情状态
@@ -47,6 +47,26 @@
   - ✈️ 旅行/搬家
   - 🛒 重大购物
   - 📌 其他重要事件
+
+### 6. 数据可视化 🆕
+- ✅ **24 小时热力图**：发推时间分布，标注高峰时段
+- ✅ **星期分布图**：工作日 vs 周末活跃度对比
+- ✅ **语言分布饼图**：推文语言构成一目了然
+- ✅ **兴趣标签图**：核心/边缘兴趣置信度横向条形图
+- ✅ **HTML 报告**：所有图表汇总为一个可分享的网页
+
+### 7. Hashtag / Mention 网络分析 🆕
+- ✅ **高频 Hashtag**：提取并统计所有 #标签 使用频率
+- ✅ **高频 Mention**：统计 @提及 最多的用户
+- ✅ **共现关系**：同一条推文中的 hashtag-mention 配对
+- ✅ **可视化图表**：自动生成 hashtag 和 mention 的柱状图
+- ✅ **数据回退**：entities 字段为空时自动从文本中提取
+
+### 8. 统一 CLI 与批量翻译 🆕
+- ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等命令行参数
+- ✅ **参数覆盖**：CLI 参数优先于 `.env` 配置
+- ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍
+- ✅ **自动回退**：批量翻译失败时自动回退到单条翻译
 
 
 
@@ -368,6 +388,73 @@ python3 analyze_pro.py       # 专业分析
 python3 analyze_behavior.py  # 行为分析
 ```
 
+### 4. CLI 命令行参数 🆕
+
+所有脚本支持命令行参数，**CLI 参数优先于 `.env` 配置**：
+
+```bash
+# 指定用户和抓取页数
+python3 main.py -u MiracleHe --pages 10
+
+# 指定用户和模型
+python3 analyze_pro.py -u MiracleHe --model deepseek-chat
+
+# 增量抓取指定用户和目标日期
+python3 fetch_more_history.py -u MiracleHe --target-date 2023-01-01
+
+# 查看帮助
+python3 main.py --help
+```
+
+#### 各脚本支持的参数
+
+| 参数 | 说明 | main.py | fetch | analyze_pro | behavior | only |
+|------|------|:-------:|:-----:|:-----------:|:--------:|:----:|
+| `-u/--user` | 目标用户名 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `--pages` | 抓取页数 | ✅ | ✅ | - | - | - |
+| `--model` | LLM 模型名 | ✅ | - | ✅ | - | - |
+| `--batch-size` | 每批翻译条数 | ✅ | - | - | - | - |
+| `--target-date` | 历史目标日期 | - | ✅ | - | - | - |
+| `--cache-dir` | 缓存目录 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `--temperature` | 模型温度 | - | - | ✅ | - | - |
+| `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
+
+### 5. 数据可视化 🆕
+
+```bash
+# 生成所有图表 + HTML 报告
+python3 visualize.py
+
+# 指定用户
+python3 visualize.py -u MiracleHe
+
+# 自定义输出目录
+python3 visualize.py --output ./my_charts
+```
+
+输出文件（默认在 `cache/charts/`）：
+- `{username}_hourly.png` - 24 小时发推热力图
+- `{username}_weekday.png` - 星期分布图
+- `{username}_language.png` - 语言分布饼图
+- `{username}_interests.png` - 兴趣标签图
+- `{username}_report.html` - 汇总 HTML 报告
+
+### 6. Hashtag / Mention 网络分析 🆕
+
+```bash
+# 分析 hashtag 和 mention
+python3 analyze_network.py
+
+# 指定用户，显示 Top 30
+python3 analyze_network.py -u MiracleHe --top 30
+```
+
+输出：
+- 终端打印 Top N hashtag/mention 频率
+- `cache/charts/{username}_hashtags.png` - Hashtag 柱状图
+- `cache/charts/{username}_mentions.png` - Mention 柱状图
+- `cache/{username}_network.json` - 完整分析数据
+
 ## 🌐 多语言翻译功能
 
 ### 支持的语言
@@ -375,6 +462,7 @@ python3 analyze_behavior.py  # 行为分析
 - 🇨🇳 **中文** → 直接保留（跳过翻译）
 
 ### 智能特性
+- ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍 🆕
 - ✅ **自动语言检测**：使用 `langdetect` 库自动识别推文语言
 - ✅ **智能翻译策略**：根据检测语言使用不同的翻译提示词
 - ✅ **语言分布统计**：显示推文的语言构成分析
@@ -589,6 +677,7 @@ langdetect>=1.0.9         # 语言检测（多语言翻译支持）
 sentence-transformers>=2.2.0  # 文本向量化
 scikit-learn>=1.3.0          # 聚类算法
 tqdm>=4.66.0                 # 进度条
+matplotlib>=3.7.0            # 数据可视化图表
 ```
 
 ### 深度学习依赖
