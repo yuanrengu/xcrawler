@@ -7,6 +7,7 @@
 import os
 import json
 import time
+import argparse
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -14,12 +15,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 配置
-X_BEARER_TOKEN = os.getenv("X_BEARER_TOKEN")
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
+X_BEARER_TOKEN=os.getenv("X_BEARER_TOKEN")
+TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 CACHE_DIR = "cache"
-MAX_PAGES = 10  # Free 账号：每天只抓10页（1000条），避免超限
+MAX_PAGES = 10
 
-# 从环境变量读取目标日期，默认为2024-01-01
 target_date_str = os.getenv("TARGET_DATE", "2024-01-01")
 try:
     TARGET_DATE = datetime.strptime(target_date_str, "%Y-%m-%d")
@@ -27,7 +27,17 @@ except ValueError:
     print(f"⚠️ TARGET_DATE 格式错误: {target_date_str}，使用默认值: 2024-01-01")
     TARGET_DATE = datetime(2024, 1, 1)
 
-REQUEST_INTERVAL = 3  # 每次请求间隔3秒，更保守
+REQUEST_INTERVAL = 3
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="智能增量抓取：双向同步（新推文 + 历史补全）")
+    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--pages", type=int, help=f"最大抓取页数（默认 {MAX_PAGES}）")
+    parser.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
+    parser.add_argument("--interval", type=int, help=f"请求间隔秒数（默认 {REQUEST_INTERVAL}）")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    return parser.parse_args()
 
 
 def parse_twitter_datetime(dt_str: str) -> datetime:
@@ -152,6 +162,26 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
     return all_tweets, reached_target, pages_fetched
 
 def main():
+    global TARGET_USERNAME, MAX_PAGES, TARGET_DATE, REQUEST_INTERVAL, CACHE_DIR, HEADERS
+
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.pages:
+        MAX_PAGES = args.pages
+    if args.target_date:
+        try:
+            TARGET_DATE = datetime.strptime(args.target_date, "%Y-%m-%d")
+        except ValueError:
+            print(f"⚠️ --target-date 格式错误: {args.target_date}，使用默认值")
+    if args.interval:
+        REQUEST_INTERVAL = args.interval
+    if args.cache_dir:
+        CACHE_DIR = args.cache_dir
+
+    # 更新 HEADERS（user 可能改变了 token）
+    HEADERS = {"Authorization": f"Bearer {X_BEARER_TOKEN}"}
+
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

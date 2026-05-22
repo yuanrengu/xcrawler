@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 
@@ -206,7 +207,21 @@ def generate_behavior_summary(time_analysis, life_events):
         print(f"❌ 总结生成失败: {str(e)}")
         return "无法生成总结"
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="用户行为分析：时间模式 + 生活事件检测")
+    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    return parser.parse_args()
+
 def main():
+    global TARGET_USERNAME, CACHE_DIR
+
+    args = parse_args()
+    if args.user:
+        TARGET_USERNAME = args.user
+    if args.cache_dir:
+        CACHE_DIR = args.cache_dir
+
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"📊 行为分析: 时间模式 + 生活事件")
