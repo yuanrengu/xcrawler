@@ -80,18 +80,14 @@ print("生活事件:", behavior['life_events'])
 
 ### 修改配置
 
-在 `main.py` 中：
+编辑 `.env` 文件，修改 `TARGET_USERNAME`：
 
-```python
-TARGET_USERNAME = "your_target_user"  # ← 改成你要分析的用户名
-MAX_PAGES = 8                         # ← 抓取页数（每页100条）
+```bash
+# .env
+TARGET_USERNAME=your_target_user  # ← 改成你要分析的用户名
 ```
 
-在 `analyze_behavior.py` 中：
-
-```python
-TARGET_USERNAME = "your_target_user"  # ← 必须与 main.py 一致
-```
+所有脚本会自动读取 `.env` 中的配置，无需修改代码。
 
 ### 重新运行
 
@@ -99,6 +95,8 @@ TARGET_USERNAME = "your_target_user"  # ← 必须与 main.py 一致
 python3 main.py                # 抓取新用户数据
 python3 analyze_behavior.py   # 分析新用户行为
 ```
+
+详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)。
 
 ## 💡 常用命令
 

@@ -65,7 +65,7 @@ def load_translation_cache():
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except Exception:
             return {}
     return {}
 
@@ -88,7 +88,7 @@ def detect_language(text: str) -> str:
         return lang
     except ImportError:
         return "unknown"
-    except:
+    except Exception:
         return "unknown"
 
 def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = True) -> str | None:
@@ -344,6 +344,7 @@ def main():
             }
             
             # 处理结果
+            save_counter = 0
             for future in tqdm(as_completed(future_to_tweet), total=len(to_process), desc="翻译进度"):
                 original, lang, created = future_to_tweet[future]
                 try:
@@ -356,6 +357,10 @@ def main():
                             "detected_language": lang,
                             "created_at": created
                         })
+                        save_counter += 1
+                        # 每翻译20条保存一次缓存，防止崩溃丢失进度
+                        if save_counter % 20 == 0:
+                            save_translation_cache(translation_cache)
                 except Exception as e:
                     print(f"❌ 处理推文出错: {str(e)}")
         

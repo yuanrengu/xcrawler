@@ -29,6 +29,14 @@ except ValueError:
 
 REQUEST_INTERVAL = 3  # 每次请求间隔3秒，更保守
 
+
+def parse_twitter_datetime(dt_str: str) -> datetime:
+    """解析 Twitter API 返回的时间戳，兼容有/无微秒格式"""
+    try:
+        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError:
+        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ")
+
 HEADERS = {
     "Authorization": f"Bearer {X_BEARER_TOKEN}"
 }
@@ -110,7 +118,7 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
             pages_fetched += 1
             
             # 获取本页最早时间
-            oldest_in_page = datetime.strptime(page_tweets[-1]["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+            oldest_in_page = parse_twitter_datetime(page_tweets[-1]["created_at"])
             print(f"📄 第 {page + 1} 页: {len(page_tweets)}条 | 最早: {oldest_in_page.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
             
             # 仅在向历史抓取时检查日期停止条件
@@ -188,7 +196,7 @@ def main():
         
         newest_id = newest_tweet["id"]
         oldest_id = oldest_tweet["id"]
-        oldest_date = datetime.strptime(oldest_tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
+        oldest_date = parse_twitter_datetime(oldest_tweet["created_at"])
         
         print(f"📍 现有最新推文: {newest_tweet['created_at']} (ID: {newest_id})")
         print(f"📍 现有最早推文: {oldest_tweet['created_at']} (ID: {oldest_id})\n")
