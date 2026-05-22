@@ -295,7 +295,6 @@ output/
 
 # 临时脚本
 temp_*.py
-test_*.py
 debug_*.py
 
 # 备份的配置文件

@@ -4,6 +4,7 @@
 1. 抓取比现有数据更新的推文（Forward Fetching）
 2. 抓取比现有数据更早的推文（Backward Fetching），直到到达 TARGET_DATE
 """
+from __future__ import annotations
 import os
 import json
 import time
