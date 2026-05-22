@@ -4,8 +4,6 @@ import json
 import time
 import argparse
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
 from openai import OpenAI
 
 from dotenv import load_dotenv
@@ -164,9 +162,6 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
                 return None
 
 
-BATCH_SIZE = 10  # 每批翻译的推文数量
-
-
 def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] | None = None,
                               use_cache: bool = True) -> list[str | None]:
     """
@@ -287,7 +282,6 @@ def _parse_batch_response(response: str, expected_count: int) -> list[str]:
     解析批量翻译响应，提取 [N] 开头的翻译结果。
     兼容多种格式：[1] xxx、1. xxx、1) xxx 等。
     """
-    import re
     lines = response.strip().split("\n")
     results = []
 
@@ -487,6 +481,11 @@ def main():
         print(f"💾 原始推文已保存至: {raw_file}\n")
 
         # 3. 清洗 + 批量翻译
+        if args.no_translate:
+            print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
+            print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
+            return
+
         print("🧹 清洗 + 智能批量翻译...")
         translated = []
         translated_data = []  # 保存完整数据
@@ -539,11 +538,7 @@ def main():
             }.get(lang, lang)
             print(f"   {lang_name}: {count} 条")
         print()
-        
-        # 保存翻译缓存
-        save_translation_cache(translation_cache)
-        print(f"💾 翻译缓存已更新: {len(translation_cache)} 条\n")
-        
+
         # 保存翻译结果
         translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
         with open(translated_file, 'w', encoding='utf-8') as f:
