@@ -746,7 +746,7 @@ chmod +x refetch_data.sh
 - ✅ **延迟加载**：`analyze_only.py` 向量模型改为函数内 lazy import，避免 import 时加载 300MB 模型
 - ✅ **文档修正**：README MAX_PAGES 数值对齐、QUICK_START 换用户方式更新、多处时区描述修正
 
-### v2.6.0 - 翻译同步与修复 🆕
+### v2.6.0 - 翻译同步与修复
 - ✅ **独立同步工具**：新增 `translate_sync.py`，支持增量翻译和强制重翻 (`--force`)
 - ✅ **智能依赖处理**：`main.py` 和同步脚本支持可选依赖（如 `langdetect` 缺失时自动降级）
 - ✅ **行为分析增强**：`analyze_behavior.py` 结合原始数据（时间模式）和翻译数据（事件检测）
