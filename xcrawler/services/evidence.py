@@ -4,6 +4,7 @@ import html
 from typing import Any
 
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.privacy_guard import redact_record
 
 
 def build_evidence_map(translated_data: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
@@ -47,13 +48,15 @@ def evidence_items(tweet_ids: list[str], evidence_map: dict[str, dict[str, Any]]
     return [evidence_map[tweet_id] for tweet_id in tweet_ids if tweet_id in evidence_map]
 
 
-def render_evidence_html(tweet_ids: list[str], evidence_map: dict[str, dict[str, Any]]) -> str:
+def render_evidence_html(tweet_ids: list[str], evidence_map: dict[str, dict[str, Any]], *, redact: bool = False) -> str:
     items = evidence_items(tweet_ids, evidence_map)
     if not items:
         return '<p class="empty">暂无可追溯证据</p>'
 
     rows = []
     for item in items:
+        if redact:
+            item = redact_record(item)
         tweet_id = html.escape(str(item.get("tweet_id") or ""))
         created_at = html.escape(item.get("created_at", ""))
         translated = html.escape(item.get("translated", ""))

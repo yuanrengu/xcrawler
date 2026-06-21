@@ -3,6 +3,7 @@ import json
 import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
+from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
 from xcrawler.services.records import normalize_translated_tweets
 
 # 尝试导入可选依赖
@@ -186,26 +187,14 @@ def _normalize_life_events(life_events):
                 event.setdefault("description", "")
                 event.setdefault("evidence_tweet_ids", [])
                 event.setdefault("confidence", None)
-                event.setdefault("sensitive", category in {
-                    "birthday_mentions",
-                    "relationship_events",
-                    "health_events",
-                    "travel_relocation",
-                    "major_purchases",
-                })
+                event.setdefault("sensitive", is_sensitive_event(category, event.get("description", "")))
                 normalized_events.append(event)
             else:
                 normalized_events.append({
                     "description": str(event),
                     "evidence_tweet_ids": [],
                     "confidence": None,
-                    "sensitive": category in {
-                        "birthday_mentions",
-                        "relationship_events",
-                        "health_events",
-                        "travel_relocation",
-                        "major_purchases",
-                    },
+                    "sensitive": is_sensitive_event(category, str(event)),
                 })
         normalized[category] = normalized_events
     return normalized
@@ -252,6 +241,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="用户行为分析：时间模式 + 生活事件检测")
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    parser.add_argument("--include-sensitive-events", action="store_true",
+                        help="包含敏感生活事件详情和证据。默认隐藏敏感事件。")
     return parser.parse_args()
 
 def main():
@@ -297,6 +288,7 @@ def main():
         life_events = detect_life_events(translated_data)
         if life_events:
             life_events = _normalize_life_events(life_events)
+            life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
             print("✅ 事件检测完成\n")
         else:
             print("⚠️ 事件检测失败\n")
@@ -319,6 +311,10 @@ def main():
         "analysis_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "time_analysis": time_analysis,
         "life_events": life_events,
+        "privacy": {
+            "include_sensitive_events": args.include_sensitive_events,
+            "sensitive_events_redacted": not args.include_sensitive_events,
+        },
         "behavior_summary": behavior_summary
     }
     
@@ -373,7 +369,8 @@ def main():
                     if isinstance(event, dict):
                         evidence = ", ".join(event.get("evidence_tweet_ids", []))
                         suffix = f" (evidence: {evidence})" if evidence else ""
-                        print(f"   • {event.get('description', '')}{suffix}")
+                        marker = " [敏感已隐藏]" if event.get("redacted") else ""
+                        print(f"   • {event.get('description', '')}{marker}{suffix}")
                     else:
                         print(f"   • {event}")
                 print()
