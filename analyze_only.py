@@ -3,6 +3,7 @@ import json
 import argparse
 from sklearn.cluster import KMeans
 from datetime import datetime
+from xcrawler.storage.json_store import load_json, save_json
 
 # 禁用 tokenizers 并行警告
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -38,16 +39,13 @@ def main():
     translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
     raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
     
-    if not os.path.exists(translated_file):
+    translated_data = load_json(translated_file)
+    if translated_data is None:
         print(f"❌ 找不到翻译文件: {translated_file}")
         return
     
     print("📂 加载已有的翻译数据...")
-    with open(translated_file, 'r', encoding='utf-8') as f:
-        translated_data = json.load(f)
-    
-    with open(raw_file, 'r', encoding='utf-8') as f:
-        raw_tweets = json.load(f)
+    raw_tweets = load_json(raw_file, default=[])
     
     # 提取翻译后的文本
     translated = [item["translated"] for item in translated_data]
@@ -103,8 +101,7 @@ def main():
     }
     
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_analysis.json")
-    with open(result_file, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    save_json(result_file, result)
     print(f"💾 完整分析已保存至: {result_file}\n")
     
     # 5. 输出结果

@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime
 
 from dotenv import load_dotenv
+from xcrawler.storage.json_store import load_json
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -99,9 +100,8 @@ def main():
 
     if args.type in ("all", "tweets"):
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
-        if os.path.exists(raw_file):
-            with open(raw_file, 'r', encoding='utf-8') as f:
-                raw_tweets = json.load(f)
+        raw_tweets = load_json(raw_file)
+        if raw_tweets is not None:
             export_tweets(raw_tweets, os.path.join(output_dir, f"{TARGET_USERNAME}_tweets.csv"))
             exported += 1
         else:
@@ -109,9 +109,8 @@ def main():
 
     if args.type in ("all", "translations"):
         trans_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
-        if os.path.exists(trans_file):
-            with open(trans_file, 'r', encoding='utf-8') as f:
-                translated_data = json.load(f)
+        translated_data = load_json(trans_file)
+        if translated_data is not None:
             export_translations(translated_data, os.path.join(output_dir, f"{TARGET_USERNAME}_translations.csv"))
             exported += 1
         else:
@@ -119,9 +118,8 @@ def main():
 
     if args.type in ("all", "interests"):
         profile_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_interest_profile.json")
-        if os.path.exists(profile_file):
-            with open(profile_file, 'r', encoding='utf-8') as f:
-                profile_data = json.load(f)
+        profile_data = load_json(profile_file)
+        if profile_data is not None:
             export_interests(profile_data, os.path.join(output_dir, f"{TARGET_USERNAME}_interests.csv"))
             exported += 1
         else:

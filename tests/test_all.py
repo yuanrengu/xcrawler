@@ -496,3 +496,99 @@ class TestExportCsvHelpers:
             content = f.read()
         assert "你好" in content
         assert "en" in content
+
+
+# ==============================
+# xcrawler 公共模块测试
+# ==============================
+
+class TestXcrawlerTextUtils:
+    """测试 xcrawler.utils.text"""
+
+    def test_clean_text_module(self):
+        from xcrawler.utils.text import clean_text
+        assert clean_text("@user hello https://t.co/x   world") == "hello world"
+
+    def test_detect_language_short_text(self):
+        from xcrawler.utils.text import detect_language
+        assert detect_language("hi") == "unknown"
+
+
+class TestXcrawlerTimeUtils:
+    """测试 xcrawler.utils.time"""
+
+    def test_parse_twitter_datetime_module(self):
+        from xcrawler.utils.time import parse_twitter_datetime
+        dt = parse_twitter_datetime("2024-06-15T12:30:45Z")
+        assert dt == datetime(2024, 6, 15, 12, 30, 45)
+
+
+class TestJsonStore:
+    """测试 xcrawler.storage.json_store"""
+
+    def test_save_and_load_json(self, tmp_path):
+        from xcrawler.storage.json_store import load_json, save_json
+        path = tmp_path / "nested" / "data.json"
+        save_json(str(path), {"a": 1})
+        assert load_json(str(path)) == {"a": 1}
+
+    def test_load_json_missing_returns_default(self, tmp_path):
+        from xcrawler.storage.json_store import load_json
+        assert load_json(str(tmp_path / "missing.json"), default=[]) == []
+
+
+class TestConfig:
+    """测试 xcrawler.config"""
+
+    def test_apply_common_overrides(self):
+        from argparse import Namespace
+        from xcrawler.config import AppConfig, apply_common_overrides
+
+        config = AppConfig()
+        args = Namespace(user="alice", cache_dir="tmp-cache", model="deepseek-test")
+        updated = apply_common_overrides(config, args)
+
+        assert updated.target_username == "alice"
+        assert updated.cache_dir == "tmp-cache"
+        assert updated.llm_model == "deepseek-test"
+
+
+class TestTranslationService:
+    """测试 xcrawler.services.translation"""
+
+    def test_parse_batch_response_module(self):
+        from xcrawler.services.translation import parse_batch_response
+        resp = "[1] 你好\n[2] 世界"
+        assert parse_batch_response(resp, 2) == ["你好", "世界"]
+
+    def test_translate_text_uses_cache(self):
+        from xcrawler.services.translation import translate_text
+        cache = {"hello": "你好"}
+
+        def fail_client():
+            raise AssertionError("cached text should not call client")
+
+        assert translate_text(
+            "hello",
+            detected_lang="en",
+            use_cache=True,
+            cache=cache,
+            client_factory=fail_client,
+            model="test",
+            max_retries=1,
+        ) == "你好"
+
+
+class TestXApiClient:
+    """测试 xcrawler.clients.x_api"""
+
+    def test_get_user_id_module(self):
+        from xcrawler.clients.x_api import get_user_id
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": {"id": "123"}}
+        mock_response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=mock_response)
+
+        assert get_user_id("testuser", {"Authorization": "Bearer token"}, request_get=mock_get) == "123"
+        mock_get.assert_called_once()

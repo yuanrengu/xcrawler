@@ -9,6 +9,8 @@ from datetime import datetime
 from collections import Counter
 
 from dotenv import load_dotenv
+from xcrawler.storage.json_store import load_json
+from xcrawler.utils.time import parse_twitter_datetime
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -17,10 +19,7 @@ CACHE_DIR = "cache"
 
 def _parse_dt(dt_str: str) -> datetime:
     """解析 Twitter 时间戳，兼容有/无微秒"""
-    try:
-        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-    except ValueError:
-        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ")
+    return parse_twitter_datetime(dt_str)
 
 
 def parse_args():
@@ -42,11 +41,7 @@ def load_data(username, cache_dir):
     data = {}
     for key, path in [("raw", raw_file), ("translated", translated_file),
                        ("behavior", behavior_file), ("profile", profile_file)]:
-        if os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                data[key] = json.load(f)
-        else:
-            data[key] = None
+        data[key] = load_json(path)
     return data
 
 
