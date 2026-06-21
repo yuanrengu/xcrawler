@@ -130,9 +130,7 @@ def _handle_fetch_more(args: argparse.Namespace) -> int:
 
 
 def _handle_translate(args: argparse.Namespace) -> int:
-    forwarded = []
-    if args.user:
-        forwarded.extend(["--user", args.user])
+    forwarded = _forward_common(args)
     if args.force:
         forwarded.append("--force")
     return _run_script("translate_sync", forwarded)
