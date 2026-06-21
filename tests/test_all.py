@@ -499,6 +499,28 @@ class TestExportCsvHelpers:
         assert "你好" in content
         assert "en" in content
 
+    def test_export_interests_includes_evidence_ids(self, tmp_path):
+        from export_csv import export_interests
+
+        profile = {
+            "interests": [{
+                "tag": "AI",
+                "level": "core",
+                "confidence": 0.9,
+                "keywords": ["LLM"],
+                "evidence_count": 1,
+                "evidence_tweet_ids": ["123"],
+                "evidence_status": "ok",
+            }]
+        }
+        output = str(tmp_path / "interests.csv")
+        export_interests(profile, output)
+
+        with open(output, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+        assert "evidence_tweet_ids" in content
+        assert "123" in content
+
 
 # ==============================
 # xcrawler 公共模块测试
@@ -609,6 +631,84 @@ class TestTranslationRecords:
 
         assert records[0]["tweet_id"] is None
         assert records[0]["original"] == "Hello"
+
+
+class TestEvidenceService:
+    """测试 evidence 校验和 HTML 渲染"""
+
+    def test_validate_interest_evidence_filters_unknown_ids(self):
+        from xcrawler.services.evidence import validate_interest_evidence
+
+        result = {
+            "interests": [{
+                "tag": "AI",
+                "evidence_count": 1,
+                "evidence_tweet_ids": ["known", "missing"],
+            }]
+        }
+        translated = [{
+            "tweet_id": "known",
+            "original": "Hello",
+            "translated": "你好",
+            "detected_language": "en",
+            "created_at": "2024-01-01",
+        }]
+
+        validated = validate_interest_evidence(result, translated)
+        assert validated["interests"][0]["evidence_tweet_ids"] == ["known"]
+        assert "evidence_status" not in validated["interests"][0]
+
+    def test_validate_interest_evidence_marks_missing(self):
+        from xcrawler.services.evidence import validate_interest_evidence
+
+        result = {"interests": [{"tag": "AI", "evidence_tweet_ids": ["missing"]}]}
+        validated = validate_interest_evidence(result, [])
+        assert validated["interests"][0]["evidence_tweet_ids"] == []
+        assert validated["interests"][0]["evidence_status"] == "missing"
+
+    def test_render_evidence_html_includes_translated_text(self):
+        from xcrawler.services.evidence import build_evidence_map, render_evidence_html
+
+        translated = [{
+            "tweet_id": "123",
+            "original": "Hello",
+            "translated": "你好",
+            "detected_language": "en",
+            "created_at": "2024-01-01",
+        }]
+        html = render_evidence_html(["123"], build_evidence_map(translated))
+
+        assert "123" in html
+        assert "你好" in html
+
+
+class TestVisualizeEvidence:
+    """测试 HTML 报告证据区"""
+
+    def test_generate_evidence_sections(self):
+        from visualize import generate_evidence_sections
+
+        data = {
+            "translated": [{
+                "tweet_id": "123",
+                "original": "Hello",
+                "translated": "你好",
+                "detected_language": "en",
+                "created_at": "2024-01-01",
+            }],
+            "profile": {
+                "interests": [{
+                    "tag": "AI",
+                    "level": "core",
+                    "confidence": 0.9,
+                    "evidence_tweet_ids": ["123"],
+                }]
+            },
+        }
+
+        html = generate_evidence_sections(data)
+        assert "兴趣画像证据" in html
+        assert "你好" in html
 
 
 class TestTranslationService:

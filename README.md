@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 64 个测试用例（pytest）
+│   └── test_all.py                      # 69 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -451,7 +451,7 @@ python3 visualize.py --output ./my_charts
 - `{username}_weekday.png` - 星期分布图
 - `{username}_language.png` - 语言分布饼图
 - `{username}_interests.png` - 兴趣标签图
-- `{username}_report.html` - 汇总 HTML 报告
+- `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
 
 ### 6. Hashtag / Mention 网络分析 🆕
 
@@ -885,7 +885,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 64 个单元测试，使用 pytest 运行：
+项目包含 69 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -926,6 +926,8 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestConfig | 1 | 公共配置覆盖 |
 | TestModels | 2 | 核心数据模型 |
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
+| TestEvidenceService | 3 | evidence id 校验与 HTML 渲染 |
+| TestVisualizeEvidence | 1 | HTML 报告证据区 |
 | TestTranslationService | 2 | 公共翻译服务 |
 | TestXApiClient | 1 | 公共 X API client |
 
@@ -963,7 +965,7 @@ xcrawler/
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 64 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 69 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析

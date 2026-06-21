@@ -71,14 +71,16 @@ def export_interests(profile_data, output_path):
 
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.writer(f)
-        writer.writerow(["tag", "level", "confidence", "keywords", "evidence_count"])
+        writer.writerow(["tag", "level", "confidence", "keywords", "evidence_count", "evidence_tweet_ids", "evidence_status"])
         for interest in profile_data.get("interests", []):
             writer.writerow([
                 interest.get("tag", ""),
                 interest.get("level", ""),
                 interest.get("confidence", ""),
                 ", ".join(interest.get("keywords", [])),
-                interest.get("evidence_count", 0)
+                interest.get("evidence_count", 0),
+                ", ".join(interest.get("evidence_tweet_ids", [])),
+                interest.get("evidence_status", "")
             ])
     print(f"   ✅ 兴趣导出: {output_path}")
 
