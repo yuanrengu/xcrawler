@@ -996,7 +996,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 🔄 更新日志
 
-### v3.0.0 - 工程化封装与开源产品化
+### v3.0.0 - 工程化封装与开源产品化 🆕
 - ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装
 - ✅ **模块化封装**：抽出 config、paths、storage、clients、services、utils 等公共模块，旧脚本保持兼容
 - ✅ **统一 CLI**：新增 `xcrawler fetch/translate/analyze/report/export` 入口，README 以统一 CLI 为主路径
@@ -1006,7 +1006,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - ✅ **Provider 与存储抽象**：新增 `Storage`、`JsonStore`、`LLMProvider`、DeepSeek/OpenAI 兼容 Provider
 - ✅ **开源协作**：新增 `CONTRIBUTING.md`、`SECURITY.md`、`RELEASE_CHECKLIST.md`
 
-### v2.9.0 - 用户画像增强 + 情感分析 + CSV 导出 🆕
+### v2.9.0 - 用户画像增强 + 情感分析 + CSV 导出
 - ✅ **用户信息抓取**：自动获取目标用户的 bio、粉丝数、关注数等基础信息
 - ✅ **情感分析**：新增 `analyze_sentiment.py`，批量正/中/负打分，生成趋势图和饼图
 - ✅ **CSV 导出**：新增 `export_csv.py`，推文/翻译/兴趣一键导出为 Excel 可打开的 CSV
