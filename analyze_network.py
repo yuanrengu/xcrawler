@@ -9,6 +9,7 @@ from datetime import datetime
 from collections import Counter
 
 from dotenv import load_dotenv
+from xcrawler.storage.json_store import load_json, save_json
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -169,8 +170,7 @@ def save_results(username, hashtag_counts, mention_counts, pair_counts, cache_di
     }
 
     path = os.path.join(cache_dir, f"{username}_network.json")
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    save_json(path, result)
     print(f"\n💾 结果已保存: {path}")
     return path
 
@@ -192,13 +192,12 @@ def main():
 
     # 加载数据
     raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
-    if not os.path.exists(raw_file):
+    raw_tweets = load_json(raw_file)
+    if raw_tweets is None:
         print(f"❌ 找不到原始推文: {raw_file}")
         print("   请先运行 main.py 抓取数据")
         return
 
-    with open(raw_file, 'r', encoding='utf-8') as f:
-        raw_tweets = json.load(f)
     print(f"📂 已加载 {len(raw_tweets)} 条推文\n")
 
     # 提取实体

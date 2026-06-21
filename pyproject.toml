@@ -49,6 +49,9 @@ py-modules = [
   "export_csv"
 ]
 
+[tool.setuptools.packages.find]
+include = ["xcrawler*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

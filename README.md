@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 51 个测试用例（pytest）
+│   └── test_all.py                      # 60 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -880,7 +880,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 51 个单元测试，使用 pytest 运行：
+项目包含 60 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -915,6 +915,34 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestGetUserProfile | 2 | 用户信息获取 (mock) |
 | TestTranslateSyncImport | 1 | Import 不崩溃 |
 | TestExportCsvHelpers | 2 | CSV 导出 |
+| TestXcrawlerTextUtils | 2 | 公共文本工具 |
+| TestXcrawlerTimeUtils | 1 | 公共时间工具 |
+| TestJsonStore | 2 | 公共 JSON 读写 |
+| TestConfig | 1 | 公共配置覆盖 |
+| TestTranslationService | 2 | 公共翻译服务 |
+| TestXApiClient | 1 | 公共 X API client |
+
+## 🧱 模块化结构
+
+项目保留 `main.py`、`fetch_more_history.py`、`analyze_*.py` 等旧脚本入口，同时逐步把可复用能力沉到 `xcrawler/` 包中：
+
+```text
+xcrawler/
+├── config.py              # .env 配置读取与通用覆盖
+├── paths.py               # cache 路径与目录创建
+├── clients/
+│   ├── llm.py             # OpenAI/DeepSeek 兼容客户端
+│   └── x_api.py           # X API 用户与推文接口
+├── services/
+│   └── translation.py     # 单条/批量翻译与响应解析
+├── storage/
+│   └── json_store.py      # JSON 读写与目录创建
+└── utils/
+    ├── text.py            # 文本清洗与语言检测
+    └── time.py            # Twitter 时间解析
+```
+
+旧脚本仍然是当前推荐运行入口；新模块主要服务于测试、复用和后续统一 CLI 重构。
 
 ## 🔄 更新日志
 
@@ -926,7 +954,7 @@ python3 -m pytest tests/test_all.py --tb=short
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 51 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 60 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析

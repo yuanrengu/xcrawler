@@ -13,20 +13,21 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
+from xcrawler.clients import x_api
+from xcrawler.config import load_config
+from xcrawler.paths import ensure_dir
+from xcrawler.utils.time import parse_twitter_datetime as _parse_twitter_datetime
+
 load_dotenv()
+_config = load_config()
 
 # 配置
-X_BEARER_TOKEN=os.getenv("X_BEARER_TOKEN")
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
+X_BEARER_TOKEN = _config.x_bearer_token
+TARGET_USERNAME = _config.target_username
 CACHE_DIR = "cache"
 MAX_PAGES = 10
 
-target_date_str = os.getenv("TARGET_DATE", "2024-01-01")
-try:
-    TARGET_DATE = datetime.strptime(target_date_str, "%Y-%m-%d")
-except ValueError:
-    print(f"⚠️ TARGET_DATE 格式错误: {target_date_str}，使用默认值: 2024-01-01")
-    TARGET_DATE = datetime(2024, 1, 1)
+TARGET_DATE = _config.target_date
 
 REQUEST_INTERVAL = 3
 
@@ -43,10 +44,7 @@ def parse_args():
 
 def parse_twitter_datetime(dt_str: str) -> datetime:
     """解析 Twitter API 返回的时间戳，兼容有/无微秒格式"""
-    try:
-        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S.%fZ")
-    except ValueError:
-        return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ")
+    return _parse_twitter_datetime(dt_str)
 
 HEADERS = {
     "Authorization": f"Bearer {X_BEARER_TOKEN}"
@@ -54,14 +52,7 @@ HEADERS = {
 
 def get_user_id(username):
     """获取用户ID"""
-    url = f"https://api.twitter.com/2/users/by/username/{username}"
-    response = requests.get(url, headers=HEADERS, timeout=10)
-    response.raise_for_status()
-    # 检查返回数据
-    data = response.json()
-    if "data" not in data:
-         raise ValueError(f"用户 {username} 未找到 (可能被冻结或不存在)")
-    return data["data"]["id"]
+    return x_api.get_user_id(username, HEADERS, request_get=requests.get)
 
 def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, max_pages_limit=MAX_PAGES, description="抓取"):
     """
@@ -179,7 +170,7 @@ def main():
         REQUEST_INTERVAL = args.interval
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    ensure_dir(CACHE_DIR)
 
     # 更新 HEADERS（user 可能改变了 token）
     HEADERS = {"Authorization": f"Bearer {X_BEARER_TOKEN}"}
