@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 
 from dotenv import load_dotenv
+from xcrawler.services.records import normalize_translated_tweets
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -154,7 +155,7 @@ def main():
         return
 
     with open(translated_file, 'r', encoding='utf-8') as f:
-        translated_data = json.load(f)
+        translated_data = normalize_translated_tweets(json.load(f))
 
     texts = [item["translated"] for item in translated_data if item.get("translated")]
     print(f"📂 已加载 {len(texts)} 条翻译文本\n")

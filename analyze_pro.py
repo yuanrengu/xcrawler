@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from xcrawler.services.records import normalize_translated_tweets
 
 # =========================
 # 初始化
@@ -26,6 +27,14 @@ client = OpenAI(
     api_key=API_KEY,
     base_url=BASE_URL
 )
+
+
+def _ensure_interest_evidence_fields(result: Dict[str, Any]) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        for interest in result.get("interests", []):
+            if isinstance(interest, dict):
+                interest.setdefault("evidence_tweet_ids", [])
+    return result
 
 # =========================
 # 核心 Prompt（专业版）
@@ -82,7 +91,8 @@ Step 5：提炼支持关键词或典型表达
         "level": "core/peripheral",
         "confidence": 0.8,
         "keywords": ["kw1", "kw2"],
-        "evidence_count": 5
+        "evidence_count": 5,
+        "evidence_tweet_ids": ["tweet_id_1", "tweet_id_2"]
       }}
     ]
   }}
@@ -134,13 +144,13 @@ def analyze_user_interest(
     import re
     try:
         # 尝试直接解析
-        return json.loads(content)
+        return _ensure_interest_evidence_fields(json.loads(content))
     except json.JSONDecodeError:
         # 尝试从 markdown 代码块提取
         match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(1))
+                return _ensure_interest_evidence_fields(json.loads(match.group(1)))
             except json.JSONDecodeError:
                 pass
         
@@ -173,8 +183,13 @@ def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> Li
     with open(translated_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    # 提取翻译后的文本
-    texts = [item["translated"] for item in data if item.get("translated")]
+    # 提取翻译后的文本，兼容旧格式 translated.json（缺少 tweet_id 时补 None）。
+    # 保留 tweet_id 前缀，便于模型输出 evidence_tweet_ids。
+    texts = [
+        f"[tweet_id={item.get('tweet_id') or 'unknown'}] {item['translated']}"
+        for item in normalize_translated_tweets(data)
+        if item.get("translated")
+    ]
     
     return texts
 

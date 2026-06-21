@@ -1,6 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
+from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
 
 # Reuse logic from main.py
 # Make sure main.py is in the same directory or PYTHONPATH
@@ -32,7 +33,7 @@ def load_data(username):
     translated_data = []
     if os.path.exists(translated_file):
         with open(translated_file, 'r', encoding='utf-8') as f:
-            translated_data = json.load(f)
+            translated_data = normalize_translated_tweets(json.load(f))
             
     return raw_tweets, translated_data, translated_file
 
@@ -93,6 +94,7 @@ def main():
         if args.force or clean not in translated_texts:
             detected_lang = detect_language(clean)
             to_process.append({
+                "tweet_id": t.get("id"),
                 "original": clean,
                 "lang": detected_lang,
                 "created_at": t.get("created_at", "")
@@ -128,12 +130,13 @@ def main():
     for i, item in enumerate(to_process):
         translated_text = batch_results[i]
         if translated_text:
-            new_translations.append({
-                "original": item["original"],
-                "translated": translated_text,
-                "detected_language": item["lang"],
-                "created_at": item["created_at"]
-            })
+            new_translations.append(make_translated_tweet(
+                tweet_id=item["tweet_id"],
+                original=item["original"],
+                translated=translated_text,
+                detected_language=item["lang"],
+                created_at=item["created_at"],
+            ))
 
     if new_translations:
         # Final save
