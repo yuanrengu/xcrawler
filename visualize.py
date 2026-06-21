@@ -29,6 +29,8 @@ def parse_args():
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
     parser.add_argument("--format", choices=["png", "html"], default="png", help="输出格式")
+    parser.add_argument("--include-sensitive-events", action="store_true",
+                        help="在 HTML 报告中展示敏感事件证据。默认隐藏。")
     return parser.parse_args()
 
 
@@ -218,7 +220,7 @@ def chart_interest_tags(profile_data, output_dir, username):
     return path
 
 
-def generate_evidence_sections(data):
+def generate_evidence_sections(data, include_sensitive_events=False):
     """生成兴趣和生活事件的证据 HTML。"""
     translated_data = data.get("translated") or []
     evidence_map = build_evidence_map(translated_data)
@@ -251,13 +253,17 @@ def generate_evidence_sections(data):
                 if isinstance(event, dict):
                     description = event.get("description", "")
                     ids = event.get("evidence_tweet_ids", [])
+                    sensitive = bool(event.get("sensitive"))
                 else:
                     description = str(event)
                     ids = []
+                    sensitive = False
+                redact = sensitive and not include_sensitive_events
+                note = '<p class="empty">敏感事件证据默认隐藏；使用 --include-sensitive-events 可显示。</p>' if redact else ""
                 rows.append(
                     f'<section class="evidence-item">'
                     f'<h3>{category}: {description}</h3>'
-                    f'{render_evidence_html(ids, evidence_map)}'
+                    f'{note}{render_evidence_html(ids, evidence_map, redact=redact)}'
                     f'</section>'
                 )
         if rows:
@@ -266,14 +272,14 @@ def generate_evidence_sections(data):
     return "\n".join(sections)
 
 
-def generate_html_report(username, chart_paths, output_dir, data=None):
+def generate_html_report(username, chart_paths, output_dir, data=None, include_sensitive_events=False):
     """生成 HTML 报告"""
     charts_html = ""
     for name, path in chart_paths:
         if path and os.path.exists(path):
             rel_path = os.path.basename(path)
             charts_html += f'<div class="chart"><h3>{name}</h3><img src="{rel_path}" alt="{name}"></div>\n'
-    evidence_html = generate_evidence_sections(data or {})
+    evidence_html = generate_evidence_sections(data or {}, include_sensitive_events=include_sensitive_events)
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -349,7 +355,13 @@ def main():
 
     # 生成 HTML 报告
     print()
-    report_path = generate_html_report(TARGET_USERNAME, chart_paths, output_dir, data)
+    report_path = generate_html_report(
+        TARGET_USERNAME,
+        chart_paths,
+        output_dir,
+        data,
+        include_sensitive_events=args.include_sensitive_events,
+    )
 
     print("\n" + "=" * 60)
     print(f"✅ 可视化完成！共生成 {len(chart_paths)} 张图表")

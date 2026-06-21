@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 69 个测试用例（pytest）
+│   └── test_all.py                      # 74 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -444,6 +444,9 @@ python3 visualize.py -u MiracleHe
 
 # 自定义输出目录
 python3 visualize.py --output ./my_charts
+
+# 如确需展示敏感生活事件证据，必须显式开启
+python3 visualize.py --include-sensitive-events
 ```
 
 输出文件（默认在 `cache/charts/`）：
@@ -452,6 +455,8 @@ python3 visualize.py --output ./my_charts
 - `{username}_language.png` - 语言分布饼图
 - `{username}_interests.png` - 兴趣标签图
 - `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
+
+默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
 
 ### 6. Hashtag / Mention 网络分析 🆕
 
@@ -885,7 +890,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 69 个单元测试，使用 pytest 运行：
+项目包含 74 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -926,8 +931,9 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestConfig | 1 | 公共配置覆盖 |
 | TestModels | 2 | 核心数据模型 |
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
-| TestEvidenceService | 3 | evidence id 校验与 HTML 渲染 |
-| TestVisualizeEvidence | 1 | HTML 报告证据区 |
+| TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
+| TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
+| TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
 | TestTranslationService | 2 | 公共翻译服务 |
 | TestXApiClient | 1 | 公共 X API client |
 
@@ -965,7 +971,7 @@ xcrawler/
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 69 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 74 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析
@@ -1043,6 +1049,30 @@ xcrawler/
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
+
+## 🔐 Privacy / Responsible Use
+
+本项目仅应分析公开内容，并用于学习、研究、个人内容复盘或获得授权的社媒分析。请勿用于骚扰、跟踪、人肉搜索、歧视性画像、平台外广告定向、获取非公开个人信息或其他违背用户合理隐私预期的用途。
+
+隐私保护默认行为：
+
+- `analyze_behavior.py` 默认隐藏敏感生活事件详情和证据 tweet id。
+- 如确需完整敏感事件证据，必须显式传入 `--include-sensitive-events`。
+- `visualize.py` 生成 HTML 报告时默认隐藏敏感事件证据原文。
+- 邮箱、电话号码、地址类文本会在报告证据中做基础脱敏。
+
+数据清理：
+
+```bash
+# 删除默认缓存数据
+rm -rf cache/
+
+# 删除备份数据
+rm -rf cache_backup/
+
+# 删除某个用户的缓存文件
+rm -f cache/{username}_*.json cache/charts/{username}_*
+```
 
 ## 📄 许可证
 

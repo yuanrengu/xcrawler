@@ -681,6 +681,53 @@ class TestEvidenceService:
         assert "123" in html
         assert "你好" in html
 
+    def test_render_evidence_html_redacts_original(self):
+        from xcrawler.services.evidence import build_evidence_map, render_evidence_html
+
+        translated = [{
+            "tweet_id": "123",
+            "original": "email me at user@example.com",
+            "translated": "我的电话是 13800138000",
+            "detected_language": "zh",
+            "created_at": "2024-01-01",
+        }]
+        html = render_evidence_html(["123"], build_evidence_map(translated), redact=True)
+
+        assert "敏感原文已隐藏" in html
+        assert "13800138000" not in html
+
+
+class TestPrivacyGuard:
+    """测试隐私保护层"""
+
+    def test_is_sensitive_event_by_category(self):
+        from xcrawler.privacy_guard import is_sensitive_event
+
+        assert is_sensitive_event("health_events", "去了医院")
+        assert not is_sensitive_event("other_events", "参加公开演出")
+
+    def test_redact_text_masks_email_and_phone(self):
+        from xcrawler.privacy_guard import redact_text
+
+        text = redact_text("邮箱 user@example.com 电话 13800138000")
+        assert "user@example.com" not in text
+        assert "13800138000" not in text
+
+    def test_sanitize_life_events_hides_sensitive_by_default(self):
+        from xcrawler.privacy_guard import sanitize_life_events
+
+        events = {
+            "health_events": [{
+                "description": "去了医院",
+                "evidence_tweet_ids": ["123"],
+            }]
+        }
+        sanitized = sanitize_life_events(events)
+
+        assert sanitized["health_events"][0]["description"] == "[敏感生活事件已隐藏]"
+        assert sanitized["health_events"][0]["evidence_tweet_ids"] == []
+        assert sanitized["health_events"][0]["redacted"] is True
+
 
 class TestVisualizeEvidence:
     """测试 HTML 报告证据区"""
@@ -709,6 +756,32 @@ class TestVisualizeEvidence:
         html = generate_evidence_sections(data)
         assert "兴趣画像证据" in html
         assert "你好" in html
+
+    def test_generate_evidence_sections_hides_sensitive_events(self):
+        from visualize import generate_evidence_sections
+
+        data = {
+            "translated": [{
+                "tweet_id": "123",
+                "original": "private original",
+                "translated": "敏感内容",
+                "detected_language": "zh",
+                "created_at": "2024-01-01",
+            }],
+            "behavior": {
+                "life_events": {
+                    "health_events": [{
+                        "description": "去了医院",
+                        "sensitive": True,
+                        "evidence_tweet_ids": ["123"],
+                    }]
+                }
+            },
+        }
+
+        html = generate_evidence_sections(data)
+        assert "敏感事件证据默认隐藏" in html
+        assert "private original" not in html
 
 
 class TestTranslationService:
