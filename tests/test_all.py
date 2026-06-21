@@ -729,6 +729,49 @@ class TestPrivacyGuard:
         assert sanitized["health_events"][0]["redacted"] is True
 
 
+class TestCli:
+    """测试统一 CLI"""
+
+    def test_cli_help_exits(self):
+        from xcrawler.cli import main
+
+        with pytest.raises(SystemExit) as exc:
+            main(["--help"])
+        assert exc.value.code == 0
+
+    def test_fetch_command_forwards_args(self):
+        from xcrawler import cli
+
+        calls = []
+
+        def fake_run(module_name, args):
+            calls.append((module_name, args))
+            return 0
+
+        with patch("xcrawler.cli._run_script", side_effect=fake_run):
+            result = cli.main(["fetch", "--user", "alice", "--pages", "2", "--no-translate"])
+
+        assert result == 0
+        assert calls == [("main", ["--user", "alice", "--pages", "2", "--no-translate"])]
+
+    def test_analyze_behavior_forwards_privacy_flag(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["analyze", "behavior", "--include-sensitive-events"])
+
+        mock_run.assert_called_once_with("analyze_behavior", ["--include-sensitive-events"])
+
+    def test_pyproject_has_console_script(self):
+        import tomllib
+
+        with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+
+        assert data["project"]["scripts"]["xcrawler"] == "xcrawler.cli:main"
+
+
 class TestVisualizeEvidence:
     """测试 HTML 报告证据区"""
 
