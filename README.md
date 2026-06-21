@@ -106,6 +106,9 @@ xcrawler/
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
 ├── QUICK_START.md               # 快速开始指南
+├── CONTRIBUTING.md              # 贡献指南
+├── SECURITY.md                  # 安全与隐私报告说明
+├── RELEASE_CHECKLIST.md         # 发布检查清单
 └── ANALYSIS_SUMMARY.md          # 示例分析报告
 ```
 
@@ -993,6 +996,16 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 🔄 更新日志
 
+### v3.0.0 - 工程化封装与开源产品化
+- ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装
+- ✅ **模块化封装**：抽出 config、paths、storage、clients、services、utils 等公共模块，旧脚本保持兼容
+- ✅ **统一 CLI**：新增 `xcrawler fetch/translate/analyze/report/export` 入口，README 以统一 CLI 为主路径
+- ✅ **证据追溯**：保留 `tweet_id`，兴趣画像和报告支持 `evidence_tweet_ids`
+- ✅ **隐私保护**：敏感生活事件默认隐藏，HTML 报告证据原文默认脱敏
+- ✅ **运行记录**：新增 `analysis_runs.json`，关联分析结果、模型、参数、输入范围和时间
+- ✅ **Provider 与存储抽象**：新增 `Storage`、`JsonStore`、`LLMProvider`、DeepSeek/OpenAI 兼容 Provider
+- ✅ **开源协作**：新增 `CONTRIBUTING.md`、`SECURITY.md`、`RELEASE_CHECKLIST.md`
+
 ### v2.9.0 - 用户画像增强 + 情感分析 + CSV 导出 🆕
 - ✅ **用户信息抓取**：自动获取目标用户的 bio、粉丝数、关注数等基础信息
 - ✅ **情感分析**：新增 `analyze_sentiment.py`，批量正/中/负打分，生成趋势图和饼图
@@ -1074,11 +1087,16 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - [QUICK_START.md](QUICK_START.md) - 快速开始指南
 - [FETCH_MORE_DATA.md](FETCH_MORE_DATA.md) - 增量抓取说明
 - [BEHAVIOR_ANALYSIS.md](BEHAVIOR_ANALYSIS.md) - 行为分析功能说明
+- [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南：开发环境、PR 流程、测试要求
+- [SECURITY.md](SECURITY.md) - 安全与隐私报告说明
+- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - 发布前检查清单
 - [ANALYSIS_SUMMARY.md](ANALYSIS_SUMMARY.md) - 完整的用户分析报告示例
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎提交 Issue 和 Pull Request。建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，其中包含开发环境、测试命令、PR 描述和隐私默认值要求。
+
+如果你发现密钥泄露、缓存数据暴露、敏感事件未脱敏等安全或隐私问题，请参考 [SECURITY.md](SECURITY.md) 私下报告，不要直接公开可利用细节。
 
 ## 🔐 Privacy / Responsible Use
 

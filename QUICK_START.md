@@ -5,11 +5,12 @@
 ### Step 1: 安装依赖（2分钟）
 
 ```bash
-# 进入项目目录
-cd /Users/heyonggang/code/open/23AI/11tool/xcrawler
+# 克隆并进入项目目录
+git clone https://github.com/yuanrengu/xcrawler.git
+cd xcrawler
 
 # 推荐：安装项目和依赖，获得 xcrawler 命令
-python3 -m pip install -e . --break-system-packages
+python3 -m pip install -e .
 ```
 
 ### Step 2: 配置 API（1分钟）
@@ -157,10 +158,10 @@ TIMEZONE_OFFSET=8
 
 ```bash
 # 第一次运行（慢）
-python3 main.py  # 需要翻译所有推文
+xcrawler fetch  # 需要翻译所有推文
 
 # 后续运行（快）
-python3 main.py  # 自动使用缓存，跳过已翻译内容
+xcrawler fetch  # 自动使用缓存，跳过已翻译内容
 ```
 
 ### 减少 API 调用
@@ -198,8 +199,8 @@ curl -H "Authorization: Bearer $(grep DEEPSEEK_API_KEY .env | cut -d= -f2)" \
 
 ### Q3: 找不到数据文件
 ```bash
-# 确保先运行 main.py
-python3 main.py
+# 确保先运行抓取流程
+xcrawler fetch
 
 # 检查文件
 ls -lh cache/
