@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.records import normalize_translated_tweets
 
 # =========================
@@ -68,6 +69,7 @@ PROMPT_TEMPLATE = """
 3. 忽略纯情绪宣泄、寒暄、无个人立场的新闻转发
 4. 若证据不足，请降低置信度
 5. 不进行人格、心理、价值观推断
+6. evidence_tweet_ids 只能使用输入文本中出现过的 tweet_id，不能编造，不能输出 unknown
 
 ========================
 【分析步骤（请严格执行）】
@@ -194,6 +196,23 @@ def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> Li
     return texts
 
 
+def load_translated_records(cache_dir: str = "cache", username: str = None) -> list[dict[str, Any]]:
+    """加载标准化后的翻译记录，用于 evidence 校验。"""
+    if username is None:
+        username = TARGET_USERNAME
+
+    translated_file = os.path.join(cache_dir, f"{username}_translated.json")
+
+    if not os.path.exists(translated_file):
+        raise FileNotFoundError(
+            f"未找到翻译文件: {translated_file}\n"
+            f"请先运行 main.py 抓取并翻译数据"
+        )
+
+    with open(translated_file, 'r', encoding='utf-8') as f:
+        return normalize_translated_tweets(json.load(f))
+
+
 def save_analysis_result(result: Dict[str, Any], cache_dir: str = "cache", username: str = None):
     """
     保存分析结果
@@ -241,7 +260,12 @@ if __name__ == "__main__":
     try:
         # 1. 加载数据
         print("📂 加载翻译数据...")
-        texts = load_translated_tweets()
+        translated_records = load_translated_records()
+        texts = [
+            f"[tweet_id={item.get('tweet_id') or 'unknown'}] {item['translated']}"
+            for item in translated_records
+            if item.get("translated")
+        ]
         print(f"✅ 已加载 {len(texts)} 条翻译文本")
         print()
         
@@ -251,6 +275,7 @@ if __name__ == "__main__":
         print()
         
         result = analyze_user_interest(texts, temperature=0.2)
+        result = validate_interest_evidence(result, translated_records)
         
         # 3. 显示结果
         print("=" * 60)

@@ -9,6 +9,7 @@ from datetime import datetime
 from collections import Counter
 
 from dotenv import load_dotenv
+from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils.time import parse_twitter_datetime
 _ = load_dotenv()
@@ -217,13 +218,62 @@ def chart_interest_tags(profile_data, output_dir, username):
     return path
 
 
-def generate_html_report(username, chart_paths, output_dir):
+def generate_evidence_sections(data):
+    """生成兴趣和生活事件的证据 HTML。"""
+    translated_data = data.get("translated") or []
+    evidence_map = build_evidence_map(translated_data)
+
+    sections = []
+    profile = data.get("profile") or {}
+    interests = profile.get("interests", [])
+    if interests:
+        rows = []
+        for interest in interests:
+            tag = interest.get("tag", "")
+            level = interest.get("level", "")
+            confidence = interest.get("confidence", "")
+            status = interest.get("evidence_status", "ok")
+            ids = interest.get("evidence_tweet_ids", [])
+            rows.append(
+                f'<section class="evidence-item">'
+                f'<h3>{tag} <span class="meta">{level} / confidence={confidence} / evidence={status}</span></h3>'
+                f'{render_evidence_html(ids, evidence_map)}'
+                f'</section>'
+            )
+        sections.append('<div class="panel"><h2>兴趣画像证据</h2>' + "\n".join(rows) + "</div>")
+
+    behavior = data.get("behavior") or {}
+    life_events = behavior.get("life_events", {})
+    if life_events:
+        rows = []
+        for category, events in life_events.items():
+            for event in events or []:
+                if isinstance(event, dict):
+                    description = event.get("description", "")
+                    ids = event.get("evidence_tweet_ids", [])
+                else:
+                    description = str(event)
+                    ids = []
+                rows.append(
+                    f'<section class="evidence-item">'
+                    f'<h3>{category}: {description}</h3>'
+                    f'{render_evidence_html(ids, evidence_map)}'
+                    f'</section>'
+                )
+        if rows:
+            sections.append('<div class="panel"><h2>生活事件证据</h2>' + "\n".join(rows) + "</div>")
+
+    return "\n".join(sections)
+
+
+def generate_html_report(username, chart_paths, output_dir, data=None):
     """生成 HTML 报告"""
     charts_html = ""
     for name, path in chart_paths:
         if path and os.path.exists(path):
             rel_path = os.path.basename(path)
             charts_html += f'<div class="chart"><h3>{name}</h3><img src="{rel_path}" alt="{name}"></div>\n'
+    evidence_html = generate_evidence_sections(data or {})
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -233,15 +283,20 @@ def generate_html_report(username, chart_paths, output_dir):
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
   h1 {{ color: #1976D2; border-bottom: 2px solid #1976D2; padding-bottom: 10px; }}
-  .chart {{ background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+  .chart, .panel {{ background: white; border-radius: 8px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
   .chart img {{ max-width: 100%; height: auto; }}
   .meta {{ color: #666; font-size: 14px; }}
+  .evidence-item {{ border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }}
+  code {{ background: #f1f3f4; padding: 2px 4px; border-radius: 4px; }}
+  details summary {{ cursor: pointer; color: #1976D2; }}
+  .empty {{ color: #999; }}
 </style>
 </head>
 <body>
 <h1>📊 @{username} Twitter Analysis Report</h1>
 <p class="meta">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
 {charts_html}
+{evidence_html}
 </body>
 </html>"""
 
@@ -294,7 +349,7 @@ def main():
 
     # 生成 HTML 报告
     print()
-    report_path = generate_html_report(TARGET_USERNAME, chart_paths, output_dir)
+    report_path = generate_html_report(TARGET_USERNAME, chart_paths, output_dir, data)
 
     print("\n" + "=" * 60)
     print(f"✅ 可视化完成！共生成 {len(chart_paths)} 张图表")

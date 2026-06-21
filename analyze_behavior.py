@@ -185,11 +185,27 @@ def _normalize_life_events(life_events):
             if isinstance(event, dict):
                 event.setdefault("description", "")
                 event.setdefault("evidence_tweet_ids", [])
+                event.setdefault("confidence", None)
+                event.setdefault("sensitive", category in {
+                    "birthday_mentions",
+                    "relationship_events",
+                    "health_events",
+                    "travel_relocation",
+                    "major_purchases",
+                })
                 normalized_events.append(event)
             else:
                 normalized_events.append({
                     "description": str(event),
-                    "evidence_tweet_ids": []
+                    "evidence_tweet_ids": [],
+                    "confidence": None,
+                    "sensitive": category in {
+                        "birthday_mentions",
+                        "relationship_events",
+                        "health_events",
+                        "travel_relocation",
+                        "major_purchases",
+                    },
                 })
         normalized[category] = normalized_events
     return normalized

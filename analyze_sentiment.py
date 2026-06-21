@@ -157,7 +157,8 @@ def main():
     with open(translated_file, 'r', encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
 
-    texts = [item["translated"] for item in translated_data if item.get("translated")]
+    sentiment_inputs = [item for item in translated_data if item.get("translated")]
+    texts = [item["translated"] for item in sentiment_inputs]
     print(f"📂 已加载 {len(texts)} 条翻译文本\n")
 
     if len(texts) < 5:
@@ -185,17 +186,19 @@ def main():
     print(f"   ❌ Negative: {counts.get('negative', 0)} ({counts.get('negative', 0)/total*100:.1f}%)")
 
     # Top 正面/负面推文
-    pos_tweets = [(t, s) for t, s in zip(texts, sentiments) if s == "positive"]
-    neg_tweets = [(t, s) for t, s in zip(texts, sentiments) if s == "negative"]
+    pos_tweets = [(item, s) for item, s in zip(sentiment_inputs, sentiments) if s == "positive"]
+    neg_tweets = [(item, s) for item, s in zip(sentiment_inputs, sentiments) if s == "negative"]
 
     if pos_tweets:
         print(f"\n😊 Top {min(args.top, len(pos_tweets))} 正面推文:")
-        for t, _ in pos_tweets[:args.top]:
+        for item, _ in pos_tweets[:args.top]:
+            t = item["translated"]
             print(f"   • {t[:60]}{'...' if len(t) > 60 else ''}")
 
     if neg_tweets:
         print(f"\n😔 Top {min(args.top, len(neg_tweets))} 负面推文:")
-        for t, _ in neg_tweets[:args.top]:
+        for item, _ in neg_tweets[:args.top]:
+            t = item["translated"]
             print(f"   • {t[:60]}{'...' if len(t) > 60 else ''}")
 
     # 生成图表
@@ -212,6 +215,15 @@ def main():
         "distribution": dict(counts),
         "positive_ratio": round(counts.get("positive", 0) / total, 3),
         "negative_ratio": round(counts.get("negative", 0) / total, 3),
+        "items": [
+            {
+                "tweet_id": item.get("tweet_id"),
+                "created_at": item.get("created_at"),
+                "sentiment": sentiment,
+                "translated": item.get("translated", ""),
+            }
+            for item, sentiment in zip(sentiment_inputs, sentiments)
+        ],
     }
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_sentiment.json")
     with open(result_file, 'w', encoding='utf-8') as f:
