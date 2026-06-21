@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 74 个测试用例（pytest）
+│   └── test_all.py                      # 78 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -338,59 +338,58 @@ LLM_MODEL=deepseek-chat
 
 ### 3. 运行分析
 
-#### 🌟 推荐方式：使用便捷脚本
+#### 🌟 推荐方式：使用统一 CLI
 
-**根据你的API类型选择最佳策略：**
+安装完成后可以直接使用 `xcrawler` 命令：
 
 ```bash
-# 🆓 Free API 用户（推荐）- 每天运行
-./refetch_data.sh -i                 # 增量抓取，避免限流
+# 首次完整流程：抓取 + 翻译 + 聚类
+xcrawler fetch --user MiracleHe
 
-# 💰 付费 API 用户 - 按需运行  
-./refetch_data.sh                    # 全量抓取，快速完整
+# 专业兴趣画像
+xcrawler analyze interest --user MiracleHe
 
-# 🚀 首次使用 - 建立数据基础
-./refetch_data.sh                    # 全量抓取，获取历史数据
+# 行为分析（默认隐藏敏感生活事件）
+xcrawler analyze behavior --user MiracleHe
 
-# 然后运行分析
-python3 analyze_pro.py               # 专业兴趣画像分析
-python3 analyze_behavior.py          # 行为分析
+# 生成图表和 HTML 报告
+xcrawler report --user MiracleHe
 ```
 
-**这样就完美解决了原来只能全量抓取的问题！**
+旧脚本入口仍然保留，例如 `python3 main.py`、`python3 analyze_pro.py`，用于兼容已有流程。
 
 #### 方案 A：首次完整分析
 
 ```bash
 # Step 1: 抓取数据 + 翻译 + 聚类分析
-python3 main.py
+xcrawler fetch
 
 # Step 2: 专业兴趣画像分析（推荐）
-python3 analyze_pro.py
+xcrawler analyze interest
 
 # Step 3: 行为分析（时间模式 + 生活事件）
-python3 analyze_behavior.py
+xcrawler analyze behavior
 ```
 
 #### 方案 B：增量抓取（推荐 Free API）
 
 ```bash
 # 首次抓取
-python3 main.py
+xcrawler fetch
 
 # 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
-python3 fetch_more_history.py
+xcrawler fetch-more
 
 # 确保新数据被翻译（关键步骤）🆕
-python3 translate_sync.py
+xcrawler translate
 
 # 或使用便捷脚本（已包含同步逻辑）
 ./refetch_data.sh --incremental    # 增量抓取（推荐）
 ./refetch_data.sh                  # 全量重新抓取
 
 # 重新分析
-python3 analyze_pro.py
-python3 analyze_behavior.py
+xcrawler analyze interest
+xcrawler analyze behavior
 ```
 
 #### 方案 C：仅分析现有数据
@@ -398,29 +397,44 @@ python3 analyze_behavior.py
 ```bash
 # 快速分析（不重新抓取）
 python3 analyze_only.py      # 聚类分析
-python3 analyze_pro.py       # 专业分析
-python3 analyze_behavior.py  # 行为分析
+xcrawler analyze interest    # 专业分析
+xcrawler analyze behavior    # 行为分析
 ```
 
-### 4. CLI 命令行参数 🆕
+### 4. 统一 CLI 命令 🆕
 
-所有脚本支持命令行参数，**CLI 参数优先于 `.env` 配置**：
+`xcrawler` 支持统一子命令，CLI 参数优先于 `.env` 配置：
 
 ```bash
 # 指定用户和抓取页数
-python3 main.py -u MiracleHe --pages 10
+xcrawler fetch -u MiracleHe --pages 10
 
 # 指定用户和模型
-python3 analyze_pro.py -u MiracleHe --model deepseek-chat
+xcrawler analyze interest -u MiracleHe --model deepseek-chat
 
 # 增量抓取指定用户和目标日期
-python3 fetch_more_history.py -u MiracleHe --target-date 2023-01-01
+xcrawler fetch-more -u MiracleHe --target-date 2023-01-01
 
 # 查看帮助
-python3 main.py --help
+xcrawler --help
+xcrawler analyze --help
 ```
 
-#### 各脚本支持的参数
+#### 常用子命令
+
+| 命令 | 说明 |
+|------|------|
+| `xcrawler fetch` | 抓取数据、翻译并执行聚类分析 |
+| `xcrawler fetch-more` | 智能增量抓取新推文和历史推文 |
+| `xcrawler translate` | 同步或重翻已有原始推文 |
+| `xcrawler analyze interest` | 专业兴趣画像分析 |
+| `xcrawler analyze behavior` | 时间行为和生活事件分析 |
+| `xcrawler analyze sentiment` | 情感分析 |
+| `xcrawler analyze network` | Hashtag / Mention 网络分析 |
+| `xcrawler report` | 生成图表和 HTML 报告 |
+| `xcrawler export csv` | 导出 CSV |
+
+#### 兼容脚本支持的参数
 
 | 参数 | 说明 | main.py | fetch | analyze_pro | behavior | only |
 |------|------|:-------:|:-----:|:-----------:|:--------:|:----:|
@@ -437,16 +451,16 @@ python3 main.py --help
 
 ```bash
 # 生成所有图表 + HTML 报告
-python3 visualize.py
+xcrawler report
 
 # 指定用户
-python3 visualize.py -u MiracleHe
+xcrawler report -u MiracleHe
 
 # 自定义输出目录
-python3 visualize.py --output ./my_charts
+xcrawler report --output ./my_charts
 
 # 如确需展示敏感生活事件证据，必须显式开启
-python3 visualize.py --include-sensitive-events
+xcrawler report --include-sensitive-events
 ```
 
 输出文件（默认在 `cache/charts/`）：
@@ -462,10 +476,10 @@ python3 visualize.py --include-sensitive-events
 
 ```bash
 # 分析 hashtag 和 mention
-python3 analyze_network.py
+xcrawler analyze network
 
 # 指定用户，显示 Top 30
-python3 analyze_network.py -u MiracleHe --top 30
+xcrawler analyze network -u MiracleHe --top 30
 ```
 
 输出：
@@ -478,10 +492,10 @@ python3 analyze_network.py -u MiracleHe --top 30
 
 ```bash
 # 对翻译后的推文做情感打分
-python3 analyze_sentiment.py
+xcrawler analyze sentiment
 
 # 指定用户
-python3 analyze_sentiment.py -u MiracleHe --top 10
+xcrawler analyze sentiment -u MiracleHe --top 10
 ```
 
 输出：
@@ -493,13 +507,13 @@ python3 analyze_sentiment.py -u MiracleHe --top 10
 
 ```bash
 # 导出所有数据为 CSV
-python3 export_csv.py
+xcrawler export csv
 
 # 只导出翻译数据
-python3 export_csv.py --type translations
+xcrawler export csv --type translations
 
 # 指定用户和输出目录
-python3 export_csv.py -u MiracleHe --output ./my_data
+xcrawler export csv -u MiracleHe --output ./my_data
 ```
 
 输出文件（默认在 `cache/csv/`）：
@@ -890,7 +904,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 74 个单元测试，使用 pytest 运行：
+项目包含 78 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -933,6 +947,7 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
 | TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
 | TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
+| TestCli | 4 | 统一 CLI 参数解析和转发 |
 | TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
 | TestTranslationService | 2 | 公共翻译服务 |
 | TestXApiClient | 1 | 公共 X API client |
@@ -943,6 +958,7 @@ python3 -m pytest tests/test_all.py --tb=short
 
 ```text
 xcrawler/
+├── cli.py                 # 统一 xcrawler 命令入口
 ├── config.py              # .env 配置读取与通用覆盖
 ├── models.py              # TweetRecord / TranslatedTweet / 分析结果模型
 ├── paths.py               # cache 路径与目录创建
@@ -959,7 +975,7 @@ xcrawler/
     └── time.py            # Twitter 时间解析
 ```
 
-旧脚本仍然是当前推荐运行入口；新模块主要服务于测试、复用和后续统一 CLI 重构。
+`xcrawler` 是当前推荐入口；旧脚本仍然保留，作为兼容已有流程的 legacy 入口。
 
 ## 🔄 更新日志
 
@@ -971,7 +987,7 @@ xcrawler/
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 74 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 78 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析

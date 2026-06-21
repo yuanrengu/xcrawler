@@ -35,6 +35,9 @@ test = [
 Homepage = "https://github.com/yuanrengu/xcrawler"
 Issues = "https://github.com/yuanrengu/xcrawler/issues"
 
+[project.scripts]
+xcrawler = "xcrawler.cli:main"
+
 [tool.setuptools]
 py-modules = [
   "main",

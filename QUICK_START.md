@@ -8,8 +8,8 @@
 # 进入项目目录
 cd /Users/heyonggang/code/open/23AI/11tool/xcrawler
 
-# 安装所有依赖
-pip3 install -r requirements.txt --break-system-packages
+# 推荐：安装项目和依赖，获得 xcrawler 命令
+python3 -m pip install -e . --break-system-packages
 ```
 
 ### Step 2: 配置 API（1分钟）
@@ -32,10 +32,10 @@ DEEPSEEK_API_KEY=你的DeepSeek_API_Key
 
 ```bash
 # 1️⃣ 完整流程：抓取数据 + 兴趣分析
-python3 main.py
+xcrawler fetch
 
 # 2️⃣ 行为分析：时间模式 + 生活事件检测
-python3 analyze_behavior.py
+xcrawler analyze behavior
 
 # ✅ 完成！查看结果
 cat cache/MiracleHe_behavior.json
@@ -47,10 +47,10 @@ cat cache/MiracleHe_behavior.json
 
 ```bash
 # 查看行为分析
-python3 analyze_behavior.py
+xcrawler analyze behavior
 
 # 查看兴趣画像
-python3 analyze_only.py
+xcrawler analyze interest
 ```
 
 ### 方式2: 文件查看
@@ -92,8 +92,8 @@ TARGET_USERNAME=your_target_user  # ← 改成你要分析的用户名
 ### 重新运行
 
 ```bash
-python3 main.py                # 抓取新用户数据
-python3 analyze_behavior.py   # 分析新用户行为
+xcrawler fetch                 # 抓取新用户数据
+xcrawler analyze behavior      # 分析新用户行为
 ```
 
 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)。
@@ -102,14 +102,14 @@ python3 analyze_behavior.py   # 分析新用户行为
 
 ```bash
 # 只分析已有数据（不抓取）
-python3 analyze_only.py       # 兴趣画像
-python3 analyze_behavior.py   # 行为分析
+xcrawler analyze interest     # 兴趣画像
+xcrawler analyze behavior     # 行为分析
 
 # 清空缓存重新开始
 rm cache/*.json
 
 # 查看帮助
-python3 main.py --help
+xcrawler --help
 
 # 查看依赖
 pip3 list | grep -E "(openai|requests|transformers)"
