@@ -88,6 +88,7 @@ def load_translation_cache():
 def save_translation_cache(cache):
     """保存翻译缓存"""
     cache_file = os.path.join(CACHE_DIR, "translation_cache.json")
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
 
@@ -492,6 +493,7 @@ def main():
         LLM_MODEL = args.model
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
@@ -588,7 +590,7 @@ def main():
 
         # 最终保存缓存
         save_translation_cache(translation_cache)
-        batches = max(1, len(all_texts) // BATCH_SIZE)
+        batches = max(1, (len(all_texts) + BATCH_SIZE - 1) // BATCH_SIZE)
         print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
 
         # 保存失败列表供下次重试

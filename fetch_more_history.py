@@ -179,6 +179,7 @@ def main():
         REQUEST_INTERVAL = args.interval
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
     # 更新 HEADERS（user 可能改变了 token）
     HEADERS = {"Authorization": f"Bearer {X_BEARER_TOKEN}"}

@@ -286,19 +286,26 @@ cp cache_backup/*.json cache/
 ### 1. 环境准备
 
 ```bash
-# 安装依赖
-pip3 install -r requirements.txt
+# 推荐：以可编辑模式安装项目和依赖
+python3 -m pip install -e .
+
+# 或仅安装 requirements.txt
+python3 -m pip install -r requirements.txt
 
 # 如果遇到系统保护，使用（macOS）
-pip3 install -r requirements.txt --break-system-packages
+python3 -m pip install -r requirements.txt --break-system-packages
 
 # 或者使用引号避免 shell 解析问题
-pip3 install "langdetect>=1.0.9"
+python3 -m pip install "langdetect>=1.0.9"
 ```
 
 ### 2. 配置 API 密钥
 
-创建 `.env` 文件：
+从示例文件创建 `.env`，然后填入自己的 API 密钥：
+
+```bash
+cp .env.example .env
+```
 
 ```bash
 # Twitter API (用于数据抓取)
@@ -876,11 +883,11 @@ chmod +x refetch_data.sh
 项目包含 51 个单元测试，使用 pytest 运行：
 
 ```bash
-# 安装 pytest（如果未安装）
-pip3 install pytest
+# 安装测试依赖（推荐）
+python3 -m pip install -e ".[test]"
 
 # 运行所有测试
-python3 -m pytest tests/test_all.py -v
+python3 -m pytest
 
 # 运行特定测试类
 python3 -m pytest tests/test_all.py::TestCleanText -v
