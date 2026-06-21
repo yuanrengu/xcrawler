@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 60 个测试用例（pytest）
+│   └── test_all.py                      # 64 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -531,6 +531,7 @@ python3 export_csv.py -u MiracleHe --output ./my_data
 #### 翻译数据格式
 ```json
 {
+  "tweet_id": "1740000000000000000",
   "original": "Hello world! This is my first tweet!",
   "translated": "你好世界！这是我的第一条推文！",
   "detected_language": "en",
@@ -571,28 +572,32 @@ python3 translate_sync.py --force
       "level": "core",
       "confidence": 0.85,
       "keywords": ["手游", "抽卡", "排位", "游戏"],
-      "evidence_count": 28
+      "evidence_count": 28,
+      "evidence_tweet_ids": ["1740000000000000000", "1740000000000000001"]
     },
     {
       "tag": "美妆护肤",
       "level": "core",
       "confidence": 0.78,
       "keywords": ["韩系妆容", "护肤品", "美妆"],
-      "evidence_count": 22
+      "evidence_count": 22,
+      "evidence_tweet_ids": ["1740000000000000002"]
     },
     {
       "tag": "餐饮工作",
       "level": "core",
       "confidence": 0.82,
       "keywords": ["日本料理", "服装店", "工作"],
-      "evidence_count": 15
+      "evidence_count": 15,
+      "evidence_tweet_ids": ["1740000000000000003"]
     },
     {
       "tag": "音乐订阅",
       "level": "peripheral",
       "confidence": 0.45,
       "keywords": ["Spotify", "Apple Music"],
-      "evidence_count": 8
+      "evidence_count": 8,
+      "evidence_tweet_ids": ["1740000000000000004"]
     }
   ]
 }
@@ -880,7 +885,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 60 个单元测试，使用 pytest 运行：
+项目包含 64 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -919,6 +924,8 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestXcrawlerTimeUtils | 1 | 公共时间工具 |
 | TestJsonStore | 2 | 公共 JSON 读写 |
 | TestConfig | 1 | 公共配置覆盖 |
+| TestModels | 2 | 核心数据模型 |
+| TestTranslationRecords | 2 | 翻译记录兼容层 |
 | TestTranslationService | 2 | 公共翻译服务 |
 | TestXApiClient | 1 | 公共 X API client |
 
@@ -929,11 +936,13 @@ python3 -m pytest tests/test_all.py --tb=short
 ```text
 xcrawler/
 ├── config.py              # .env 配置读取与通用覆盖
+├── models.py              # TweetRecord / TranslatedTweet / 分析结果模型
 ├── paths.py               # cache 路径与目录创建
 ├── clients/
 │   ├── llm.py             # OpenAI/DeepSeek 兼容客户端
 │   └── x_api.py           # X API 用户与推文接口
 ├── services/
+│   ├── records.py         # translated.json 新旧格式兼容
 │   └── translation.py     # 单条/批量翻译与响应解析
 ├── storage/
 │   └── json_store.py      # JSON 读写与目录创建
@@ -954,7 +963,7 @@ xcrawler/
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 60 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 64 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析

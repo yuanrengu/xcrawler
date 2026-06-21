@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any, Literal
+
+
+@dataclass
+class TweetRecord:
+    id: str
+    text: str
+    created_at: str
+    lang: str | None = None
+    raw: dict[str, Any] | None = None
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> "TweetRecord":
+        return cls(
+            id=str(data.get("id", "")),
+            text=data.get("text", ""),
+            created_at=data.get("created_at", ""),
+            lang=data.get("lang"),
+            raw=data,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class TranslatedTweet:
+    tweet_id: str | None
+    original: str
+    translated: str
+    detected_language: str
+    created_at: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TranslatedTweet":
+        return cls(
+            tweet_id=data.get("tweet_id"),
+            original=data.get("original", ""),
+            translated=data.get("translated", ""),
+            detected_language=data.get("detected_language", ""),
+            created_at=data.get("created_at", ""),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class InterestSignal:
+    tag: str
+    level: Literal["core", "peripheral"]
+    confidence: float
+    keywords: list[str] = field(default_factory=list)
+    evidence_count: int = 0
+    evidence_tweet_ids: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "InterestSignal":
+        return cls(
+            tag=data.get("tag", ""),
+            level=data.get("level", "peripheral"),
+            confidence=float(data.get("confidence", 0)),
+            keywords=list(data.get("keywords", [])),
+            evidence_count=int(data.get("evidence_count", 0)),
+            evidence_tweet_ids=list(data.get("evidence_tweet_ids", [])),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class LifeEvent:
+    category: str
+    description: str
+    confidence: float | None = None
+    sensitive: bool = False
+    evidence_tweet_ids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class AnalysisRun:
+    id: str
+    username: str
+    analysis_type: str
+    model: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

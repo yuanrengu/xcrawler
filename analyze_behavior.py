@@ -3,6 +3,7 @@ import json
 import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
+from xcrawler.services.records import normalize_translated_tweets
 
 # 尝试导入可选依赖
 try:
@@ -110,7 +111,7 @@ def detect_life_events(translated_data):
     
     # 准备推文文本
     tweets_text = "\n\n".join([
-        f"[{item.get('created_at', 'unknown')}] {item['translated']}" 
+        f"[tweet_id={item.get('tweet_id') or 'unknown'}][{item.get('created_at', 'unknown')}] {item['translated']}"
         for item in translated_data[:200]  # 分析前200条
     ])
     
@@ -129,20 +130,22 @@ def detect_life_events(translated_data):
 **输出格式**（JSON）：
 ```json
 {{
-  "birthday_mentions": ["具体内容1", "具体内容2"],
-  "relationship_events": ["具体内容1", "具体内容2"],
-  "career_education": ["具体内容1", "具体内容2"],
-  "health_events": ["具体内容1", "具体内容2"],
-  "travel_relocation": ["具体内容1", "具体内容2"],
-  "major_purchases": ["具体内容1", "具体内容2"],
-  "other_events": ["具体内容1", "具体内容2"]
+  "birthday_mentions": [
+    {{"description": "具体内容1", "evidence_tweet_ids": ["tweet_id_1"]}}
+  ],
+  "relationship_events": [],
+  "career_education": [],
+  "health_events": [],
+  "travel_relocation": [],
+  "major_purchases": [],
+  "other_events": []
 }}
 ```
 
 **要求**：
 - 只提取明确提到的事件，不要推测
 - 如果某类事件没有，返回空数组 []
-- 每个事件用简短的一句话描述
+- 每个事件用简短的一句话描述，并保留支撑它的 evidence_tweet_ids
 - 如果有时间信息，请保留
 
 推文内容：
@@ -168,6 +171,28 @@ def detect_life_events(translated_data):
     except Exception as e:
         print(f"❌ 生活事件检测失败: {str(e)}")
         return None
+
+
+def _normalize_life_events(life_events):
+    """兼容旧式字符串事件，统一补 evidence_tweet_ids 字段。"""
+    if not isinstance(life_events, dict):
+        return life_events
+
+    normalized = {}
+    for category, events in life_events.items():
+        normalized_events = []
+        for event in events or []:
+            if isinstance(event, dict):
+                event.setdefault("description", "")
+                event.setdefault("evidence_tweet_ids", [])
+                normalized_events.append(event)
+            else:
+                normalized_events.append({
+                    "description": str(event),
+                    "evidence_tweet_ids": []
+                })
+        normalized[category] = normalized_events
+    return normalized
 
 def generate_behavior_summary(time_analysis, life_events):
     """生成行为特征总结"""
@@ -241,7 +266,7 @@ def main():
         raw_tweets = json.load(f)
     
     with open(translated_file, 'r', encoding='utf-8') as f:
-        translated_data = json.load(f)
+        translated_data = normalize_translated_tweets(json.load(f))
     
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")
     
@@ -255,6 +280,7 @@ def main():
         print("🔍 检测生活事件（使用AI）...")
         life_events = detect_life_events(translated_data)
         if life_events:
+            life_events = _normalize_life_events(life_events)
             print("✅ 事件检测完成\n")
         else:
             print("⚠️ 事件检测失败\n")
@@ -328,7 +354,12 @@ def main():
                 has_events = True
                 print(f"{label}:")
                 for event in events:
-                    print(f"   • {event}")
+                    if isinstance(event, dict):
+                        evidence = ", ".join(event.get("evidence_tweet_ids", []))
+                        suffix = f" (evidence: {evidence})" if evidence else ""
+                        print(f"   • {event.get('description', '')}{suffix}")
+                    else:
+                        print(f"   • {event}")
                 print()
         
         if not has_events:

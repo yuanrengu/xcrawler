@@ -487,13 +487,15 @@ class TestExportCsvHelpers:
     def test_export_translations(self, tmp_path):
         from export_csv import export_translations
         data = [
-            {"original": "Hello", "translated": "你好", "detected_language": "en", "created_at": "2024-01-01"}
+            {"tweet_id": "42", "original": "Hello", "translated": "你好", "detected_language": "en", "created_at": "2024-01-01"}
         ]
         output = str(tmp_path / "test.csv")
         export_translations(data, output)
 
         with open(output, 'r', encoding='utf-8-sig') as f:
             content = f.read()
+        assert "tweet_id" in content
+        assert "42" in content
         assert "你好" in content
         assert "en" in content
 
@@ -551,6 +553,62 @@ class TestConfig:
         assert updated.target_username == "alice"
         assert updated.cache_dir == "tmp-cache"
         assert updated.llm_model == "deepseek-test"
+
+
+class TestModels:
+    """测试 xcrawler.models"""
+
+    def test_tweet_record_from_api(self):
+        from xcrawler.models import TweetRecord
+
+        record = TweetRecord.from_api({
+            "id": "123",
+            "text": "hello",
+            "created_at": "2024-01-01T00:00:00Z",
+        })
+
+        assert record.id == "123"
+        assert record.to_dict()["raw"]["text"] == "hello"
+
+    def test_interest_signal_defaults_evidence_ids(self):
+        from xcrawler.models import InterestSignal
+
+        signal = InterestSignal.from_dict({
+            "tag": "AI",
+            "level": "core",
+            "confidence": 0.9,
+            "evidence_count": 2,
+        })
+
+        assert signal.evidence_tweet_ids == []
+
+
+class TestTranslationRecords:
+    """测试 translated tweet 兼容层"""
+
+    def test_make_translated_tweet_includes_tweet_id(self):
+        from xcrawler.services.records import make_translated_tweet
+
+        record = make_translated_tweet(
+            tweet_id="123",
+            original="Hello",
+            translated="你好",
+            detected_language="en",
+            created_at="2024-01-01",
+        )
+
+        assert record["tweet_id"] == "123"
+        assert record["translated"] == "你好"
+
+    def test_normalize_old_translated_tweet_adds_tweet_id_none(self):
+        from xcrawler.services.records import normalize_translated_tweets
+
+        records = normalize_translated_tweets([
+            {"original": "Hello", "translated": "你好", "detected_language": "en", "created_at": "2024-01-01"}
+        ])
+
+        assert records[0]["tweet_id"] is None
+        assert records[0]["original"] == "Hello"
 
 
 class TestTranslationService:

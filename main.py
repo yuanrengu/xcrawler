@@ -14,6 +14,7 @@ from xcrawler.clients import x_api
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir, translation_cache_path
+from xcrawler.services.records import make_translated_tweet
 from xcrawler.services.translation import (
     parse_batch_response,
     translate_batch,
@@ -271,12 +272,13 @@ def main():
                 continue
             detected_lang = detect_language(original_text)
             lang_stats[detected_lang] += 1
-            to_process.append((original_text, detected_lang, t.get("created_at", "")))
+            to_process.append((t.get("id"), original_text, detected_lang, t.get("created_at", "")))
 
         # 批量翻译（每 BATCH_SIZE 条一组，大幅减少 API 调用）
-        all_texts = [t[0] for t in to_process]
-        all_langs = [t[1] for t in to_process]
-        all_created = [t[2] for t in to_process]
+        all_ids = [t[0] for t in to_process]
+        all_texts = [t[1] for t in to_process]
+        all_langs = [t[2] for t in to_process]
+        all_created = [t[3] for t in to_process]
 
         print(f"🚀 批量翻译 {len(all_texts)} 条推文（每批 {BATCH_SIZE} 条）...")
         batch_results = deepseek_translate_batch(all_texts, all_langs)
@@ -284,21 +286,22 @@ def main():
         # 收集结果
         failed_list = []
         save_counter = 0
-        for i, (original, lang, created) in enumerate(zip(all_texts, all_langs, all_created)):
+        for i, (tweet_id, original, lang, created) in enumerate(zip(all_ids, all_texts, all_langs, all_created)):
             translated_text = batch_results[i]
             if translated_text:
                 translated.append(translated_text)
-                translated_data.append({
-                    "original": original,
-                    "translated": translated_text,
-                    "detected_language": lang,
-                    "created_at": created
-                })
+                translated_data.append(make_translated_tweet(
+                    tweet_id=tweet_id,
+                    original=original,
+                    translated=translated_text,
+                    detected_language=lang,
+                    created_at=created,
+                ))
                 save_counter += 1
                 if save_counter % 50 == 0:
                     save_translation_cache(translation_cache)
             else:
-                failed_list.append({"original": original, "detected_language": lang, "created_at": created})
+                failed_list.append({"tweet_id": tweet_id, "original": original, "detected_language": lang, "created_at": created})
 
         # 最终保存缓存
         save_translation_cache(translation_cache)

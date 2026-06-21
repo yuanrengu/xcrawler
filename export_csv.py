@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime
 
 from dotenv import load_dotenv
+from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import load_json
 _ = load_dotenv()
 
@@ -47,11 +48,13 @@ def export_tweets(raw_tweets, output_path):
 
 def export_translations(translated_data, output_path):
     """导出翻译数据"""
+    translated_data = normalize_translated_tweets(translated_data)
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.writer(f)
-        writer.writerow(["original", "translated", "detected_language", "created_at"])
+        writer.writerow(["tweet_id", "original", "translated", "detected_language", "created_at"])
         for item in translated_data:
             writer.writerow([
+                item.get("tweet_id", ""),
                 item.get("original", "").replace("\n", " "),
                 item.get("translated", "").replace("\n", " "),
                 item.get("detected_language", ""),
