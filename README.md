@@ -4,11 +4,11 @@
 
 ## 🎯 功能特性
 
-### 0. 智能便捷脚本 🆕
+### 0. 智能便捷脚本
 - ✅ **双模式支持**：`./refetch_data.sh` 支持全量/增量抓取
-- ✅ **智能推荐**：Free API 用户用 `-i`，付费用户按需全量
+- ✅ **智能推荐**：低额度用户优先增量抓取，高额度用户按需全量
 - ✅ **配置统一**：自动从 `.env` 读取所有配置
-- ✅ **完美解决**：彻底解决原来只能全量抓取的限制
+- ✅ **兼容旧流程**：保留脚本化使用方式，同时推荐统一 CLI
 
 ### 1. 多用户支持
 - ✅ 通过 `.env` 配置 `TARGET_USERNAME`
@@ -48,21 +48,21 @@
   - 🛒 重大购物
   - 📌 其他重要事件
 
-### 6. 数据可视化 🆕
+### 6. 数据可视化
 - ✅ **24 小时热力图**：发推时间分布，标注高峰时段
 - ✅ **星期分布图**：工作日 vs 周末活跃度对比
 - ✅ **语言分布饼图**：推文语言构成一目了然
 - ✅ **兴趣标签图**：核心/边缘兴趣置信度横向条形图
 - ✅ **HTML 报告**：所有图表汇总为一个可分享的网页
 
-### 7. Hashtag / Mention 网络分析 🆕
+### 7. Hashtag / Mention 网络分析
 - ✅ **高频 Hashtag**：提取并统计所有 #标签 使用频率
 - ✅ **高频 Mention**：统计 @提及 最多的用户
 - ✅ **共现关系**：同一条推文中的 hashtag-mention 配对
 - ✅ **可视化图表**：自动生成 hashtag 和 mention 的柱状图
 - ✅ **数据回退**：entities 字段为空时自动从文本中提取
 
-### 8. 统一 CLI 与批量翻译 🆕
+### 8. 统一 CLI 与批量翻译
 - ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等命令行参数
 - ✅ **参数覆盖**：CLI 参数优先于 `.env` 配置
 - ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍
@@ -76,33 +76,33 @@
 xcrawler/
 ├── main.py                      # 主程序：数据抓取 + 翻译 + 聚类分析
 ├── fetch_more_history.py        # 智能增量抓取：双向抓取（新推文 + 历史补全）
-├── analyze_pro.py               # 专业分析：AI 驱动的兴趣画像分析 🆕
+├── analyze_pro.py               # 专业分析：AI 驱动的兴趣画像分析
 ├── analyze_behavior.py          # 行为分析：时间模式 + 生活事件
-├── translate_sync.py            # 翻译同步：增量翻译/重翻工具 🆕
+├── translate_sync.py            # 翻译同步：增量翻译/重翻工具
 ├── analyze_only.py              # 快速分析：仅兴趣画像（不抓取数据）
-├── visualize.py                 # 数据可视化：图表生成 🆕
-├── analyze_network.py           # Hashtag/Mention 网络分析 🆕
-├── analyze_sentiment.py         # 情感分析：正/中/负打分 + 趋势图 🆕
-├── export_csv.py                # CSV 导出：推文/翻译/兴趣导出 🆕
-├── refetch_data.sh              # 🌟 智能抓取脚本：支持全量/增量模式（推荐使用）
+├── visualize.py                 # 数据可视化：图表生成
+├── analyze_network.py           # Hashtag/Mention 网络分析
+├── analyze_sentiment.py         # 情感分析：正/中/负打分 + 趋势图
+├── export_csv.py                # CSV 导出：推文/翻译/兴趣导出
+├── refetch_data.sh              # 智能抓取脚本：支持全量/增量模式
 ├── requirements.txt             # 依赖包列表
 ├── .env                         # 环境变量配置（需自行创建）
 ├── cache/                       # 缓存目录
 │   ├── {username}_raw_tweets.json         # 原始推文
 │   ├── {username}_translated.json         # 翻译结果
 │   ├── {username}_analysis.json           # 聚类分析结果
-│   ├── {username}_interest_profile.json   # 专业兴趣画像 🆕
+│   ├── {username}_interest_profile.json   # 专业兴趣画像
 │   ├── {username}_behavior.json           # 行为模式分析
-│   ├── {username}_network.json            # Hashtag/Mention 分析 🆕
-│   ├── {username}_profile.json            # 用户基础信息 🆕
-│   ├── {username}_sentiment.json          # 情感分析结果 🆕
-│   ├── {username}_failed.json             # 翻译失败列表（自动重试）🆕
-│   ├── {username}_report.html             # 可视化报告 🆕
+│   ├── {username}_network.json            # Hashtag/Mention 分析
+│   ├── {username}_profile.json            # 用户基础信息
+│   ├── {username}_sentiment.json          # 情感分析结果
+│   ├── {username}_failed.json             # 翻译失败列表（自动重试）
+│   ├── charts/{username}_report.html      # 可视化 HTML 报告
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
-├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 83 个测试用例（pytest）
-├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
+├── tests/                       # 单元测试
+│   └── test_all.py                      # 84 个测试用例（pytest）
+├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
 ├── QUICK_START.md               # 快速开始指南
@@ -116,7 +116,7 @@ xcrawler/
 
 ### refetch_data.sh - 智能数据抓取脚本
 
-这是项目中最重要的便捷脚本，支持两种抓取模式，自动从 `.env` 读取配置，是**最推荐的数据抓取方式**。
+这是保留的便捷脚本，支持两种抓取模式，自动从 `.env` 读取配置；新用户优先使用统一 CLI，已有脚本流程仍可继续使用。
 
 #### 基本使用
 ```bash
@@ -205,16 +205,16 @@ xcrawler/
 
 #### 使用策略建议
 
-**🆓 Free API 用户（强烈推荐）：**
+**低额度 API 用户：**
 ```bash
 # 首次运行（全量抓取）
 ./refetch_data.sh
 
-# 日常更新（增量抓取，每天一次）
+# 日常更新（增量抓取）
 ./refetch_data.sh -i
 ```
 
-**💰 付费 API 用户：**
+**较高额度 API 用户：**
 ```bash
 # 按需全量抓取（获取完整历史）
 ./refetch_data.sh
@@ -250,17 +250,17 @@ cp cache_backup/*.json cache/
 
 ### 📋 推荐使用方式总结
 
-根据不同用户类型和使用场景，以下是最佳实践：
+根据不同额度和使用场景，以下是推荐实践：
 
-#### 🆓 Free API 用户（推荐）
+#### 低额度 API 用户（推荐）
 ```bash
-./refetch_data.sh -i    # 每天运行增量抓取
+./refetch_data.sh -i    # 日常增量抓取
 ```
-- **优势**：避免API限流，成本低
-- **频率**：每天一次
+- **优势**：减少 API 消耗，降低触发限流的概率
+- **频率**：按需运行
 - **适合**：日常数据更新和维护
 
-#### 💰 付费 API 用户
+#### 较高额度 API 用户
 ```bash
 ./refetch_data.sh       # 按需运行全量抓取
 ```
@@ -282,11 +282,13 @@ cp cache_backup/*.json cache/
 ./refetch_data.sh -i      # 低成本测试
 ```
 
-**这样就完美解决了原来只能全量抓取的问题！** 现在用户可以根据自己的API类型和需求选择最合适的抓取策略。
+现在用户可以根据自己的 API 额度和需求选择合适的抓取策略。
 
 ## 🚀 快速开始
 
 ### 1. 环境准备
+
+项目要求 Python 3.10 或更高版本。
 
 ```bash
 # 推荐：以可编辑模式安装项目和依赖
@@ -383,7 +385,7 @@ xcrawler fetch
 # 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
 xcrawler fetch-more
 
-# 确保新数据被翻译（关键步骤）🆕
+# 确保新数据被翻译（关键步骤）
 xcrawler translate
 
 # 或使用便捷脚本（已包含同步逻辑）
@@ -404,7 +406,7 @@ xcrawler analyze interest    # 专业分析
 xcrawler analyze behavior    # 行为分析
 ```
 
-### 4. 统一 CLI 命令 🆕
+### 4. 统一 CLI 命令
 
 `xcrawler` 支持统一子命令，CLI 参数优先于 `.env` 配置：
 
@@ -450,7 +452,7 @@ xcrawler analyze --help
 | `--temperature` | 模型温度 | - | - | ✅ | - | - |
 | `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
 
-### 5. 数据可视化 🆕
+### 5. 数据可视化
 
 ```bash
 # 生成所有图表 + HTML 报告
@@ -475,7 +477,7 @@ xcrawler report --include-sensitive-events
 
 默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
 
-### 6. Hashtag / Mention 网络分析 🆕
+### 6. Hashtag / Mention 网络分析
 
 ```bash
 # 分析 hashtag 和 mention
@@ -491,7 +493,7 @@ xcrawler analyze network -u MiracleHe --top 30
 - `cache/charts/{username}_mentions.png` - Mention 柱状图
 - `cache/{username}_network.json` - 完整分析数据
 
-### 7. 情感分析 🆕
+### 7. 情感分析
 
 ```bash
 # 对翻译后的推文做情感打分
@@ -506,7 +508,7 @@ xcrawler analyze sentiment -u MiracleHe --top 10
 - `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
 - `cache/{username}_sentiment.json` - 情感分析数据
 
-### 8. CSV 导出 🆕
+### 8. CSV 导出
 
 ```bash
 # 导出所有数据为 CSV
@@ -531,7 +533,7 @@ xcrawler export csv -u MiracleHe --output ./my_data
 - 🇨🇳 **中文** → 直接保留（跳过翻译）
 
 ### 智能特性
-- ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍 🆕
+- ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍
 - ✅ **自动语言检测**：使用 `langdetect` 库自动识别推文语言
 - ✅ **智能翻译策略**：根据检测语言使用不同的翻译提示词
 - ✅ **语言分布统计**：显示推文的语言构成分析
@@ -567,7 +569,7 @@ xcrawler export csv -u MiracleHe --output ./my_data
 - **网络用语本地化**：将英语/日语网络梗翻译为对应的中文网络用语
 - **上下文理解**：基于推文特点进行语境化翻译
 
-### 独立翻译同步工具 (`translate_sync.py`) 🆕
+### 独立翻译同步工具 (`translate_sync.py`)
 
 用于在不重新抓取数据的情况下，同步或重新翻译推文。
 
@@ -665,8 +667,7 @@ python3 translate_sync.py --force
    • 在日本料理店工作（2025-11-30）
 
 🏥 健康相关:
-   • 肚子疼和头痛严重（2025-11-25）
-   • 宠物Jiro疑似FIP后奇迹康复（2025-10-06）
+   • [敏感生活事件已隐藏]
 
 🛒 重大购物:
    • Delonghi咖啡机（2025-12-26）
@@ -821,18 +822,16 @@ pytest>=7.0.0               # 单元测试框架（可选）
 ## ⚠️ 注意事项
 
 ### API 限制
-- **Twitter Free API**: 极严格限制（月限1500条）
-  - **完美解决方案**：使用 `./refetch_data.sh -i` 增量抓取
-  - 每天运行一次，每次10页（1000条）
-  - 智能抓取到2024年1月1日或最早推文为止
-  - 脚本自动处理限流等待
-- **Twitter Basic API** ($100/月): 约100次/月
+- **X/Twitter API**: 不同套餐的读取额度和限流规则会变化，请以 X Developer Portal 当前说明为准
+  - 推荐先用较小页数测试，例如 `xcrawler fetch --pages 3`
+  - 日常更新优先使用 `xcrawler fetch-more` 或 `./refetch_data.sh -i`
+  - 脚本会读取限流重置时间并自动等待
 - **DeepSeek API**: 翻译和分析会消耗 API 额度
 - **建议**: 
   - 使用翻译缓存机制减少重复调用
-  - **Free 用户**：`./refetch_data.sh -i`（每天运行）
-  - **付费用户**：`./refetch_data.sh`（按需运行）
-  - **首次使用**：`./refetch_data.sh`（全量抓取）
+  - **低额度用户**：优先增量抓取，并降低 `--pages`
+  - **高额度用户**：按需全量抓取
+  - **首次使用**：先小页数验证配置，再逐步扩大抓取范围
 
 ### 隐私保护
 - ⚠️ 仅用于公开推文分析
@@ -874,11 +873,11 @@ pip3 install requests openai python-dotenv "langdetect>=1.0.9" --break-system-pa
 先运行 `main.py` 抓取数据，再运行其他分析脚本。
 
 ### 问题5: "API 限流（429）"
-**Twitter Free API 限制极严格：**
-- **推荐使用便捷脚本**：`./refetch_data.sh -i`（增量抓取）
-- 或手动运行：`python3 fetch_more_history.py`（智能抓取新推文 + 补全历史）
-- 脚本会自动等待限流时间（15分钟）
-- 或手动设置 `MAX_PAGES` ≤ 10
+不同 X/Twitter API 套餐限流不同：
+- 推荐先运行 `xcrawler fetch --pages 3` 验证配置
+- 日常更新使用 `xcrawler fetch-more` 或 `./refetch_data.sh -i`
+- 脚本会尽量根据接口返回的限流重置时间等待
+- 也可以手动降低 `--pages`
 
 ### 问题6: "便捷脚本权限错误"
 ```bash
@@ -907,7 +906,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 83 个单元测试，使用 pytest 运行：
+项目包含 84 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -950,7 +949,7 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
 | TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
 | TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
-| TestCli | 4 | 统一 CLI 参数解析和转发 |
+| TestCli | 5 | 统一 CLI 参数解析和转发 |
 | TestAnalysisRuns | 1 | 分析运行记录 |
 | TestFetchPlan | 1 | 抓取请求量预估 |
 | TestLLMProvider | 2 | LLM Provider 响应封装 |
@@ -996,7 +995,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 🔄 更新日志
 
-### v3.0.0 - 工程化封装与开源产品化 🆕
+### v0.3.0 - 工程化封装与开源产品化 🆕
 - ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装
 - ✅ **模块化封装**：抽出 config、paths、storage、clients、services、utils 等公共模块，旧脚本保持兼容
 - ✅ **统一 CLI**：新增 `xcrawler fetch/translate/analyze/report/export` 入口，README 以统一 CLI 为主路径
@@ -1014,8 +1013,8 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 83 个 pytest 测试用例，覆盖所有纯函数和工具函数
-- ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
+- ✅ **单元测试**：扩展 pytest 覆盖，覆盖主要纯函数、工具函数和 CLI 转发
+- ✅ **历史兼容性改进**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析
 - ✅ **批量翻译**：`deepseek_translate_batch()` 每批 10 条合并为一次 API 调用，费用降低 5-10 倍
@@ -1083,7 +1082,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 📚 相关文档
 
-- [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - 配置指南：多用户分析配置 🆕
+- [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - 配置指南：多用户分析配置
 - [QUICK_START.md](QUICK_START.md) - 快速开始指南
 - [FETCH_MORE_DATA.md](FETCH_MORE_DATA.md) - 增量抓取说明
 - [BEHAVIOR_ANALYSIS.md](BEHAVIOR_ANALYSIS.md) - 行为分析功能说明

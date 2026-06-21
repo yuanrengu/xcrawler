@@ -42,16 +42,23 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description="翻译同步/重翻工具")
     parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--force", action="store_true", help="强制重新翻译所有推文（忽略缓存和现有翻译）")
     args = parser.parse_args()
 
     if args.user:
         global TARGET_USERNAME
         TARGET_USERNAME = args.user
+    if args.cache_dir:
+        global CACHE_DIR
+        import main as main_module
+        CACHE_DIR = args.cache_dir
+        main_module.CACHE_DIR = args.cache_dir
 
     print("=" * 60)
     print(f"🔄 翻译同步工具 (Translation Sync)")
     print(f"🎯 目标用户: {TARGET_USERNAME}")
+    print(f"📁 缓存目录: {CACHE_DIR}")
     if args.force:
         print("⚠️  模式: 强制重新翻译 (Force Re-translation)")
     print("=" * 60 + "\n")

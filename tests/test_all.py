@@ -772,6 +772,15 @@ class TestCli:
 
         mock_run.assert_called_once_with("analyze_behavior", ["--include-sensitive-events"])
 
+    def test_translate_forwards_cache_dir(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["translate", "--user", "alice", "--cache-dir", "tmp-cache", "--force"])
+
+        mock_run.assert_called_once_with("translate_sync", ["--user", "alice", "--cache-dir", "tmp-cache", "--force"])
+
     def test_pyproject_has_console_script(self):
         import tomllib
 
