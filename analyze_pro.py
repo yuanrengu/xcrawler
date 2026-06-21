@@ -7,7 +7,9 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 from openai import OpenAI
 from xcrawler.services.evidence import validate_interest_evidence
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.storage.json_store import JsonStore
 
 # =========================
 # 初始化
@@ -250,6 +252,7 @@ if __name__ == "__main__":
         TARGET_USERNAME = args.user
     if args.model:
         MODEL = args.model
+    cache_dir = args.cache_dir or "cache"
 
     print("=" * 60)
     print("🎯 用户兴趣画像分析（专业版）")
@@ -260,7 +263,7 @@ if __name__ == "__main__":
     try:
         # 1. 加载数据
         print("📂 加载翻译数据...")
-        translated_records = load_translated_records()
+        translated_records = load_translated_records(cache_dir, TARGET_USERNAME)
         texts = [
             f"[tweet_id={item.get('tweet_id') or 'unknown'}] {item['translated']}"
             for item in translated_records
@@ -273,9 +276,18 @@ if __name__ == "__main__":
         print("🔍 开始分析用户兴趣画像...")
         print("⚙️  使用模型:", MODEL)
         print()
+        run = create_analysis_run(
+            username=TARGET_USERNAME,
+            analysis_type="interest",
+            model=MODEL,
+            params={"temperature": args.temperature},
+            input_range={"translated_records": len(translated_records), "texts": len(texts)},
+        )
         
-        result = analyze_user_interest(texts, temperature=0.2)
+        result = analyze_user_interest(texts, temperature=args.temperature)
         result = validate_interest_evidence(result, translated_records)
+        result["analysis_run_id"] = run.id
+        record_analysis_run(JsonStore(cache_dir), complete_analysis_run(run))
         
         # 3. 显示结果
         print("=" * 60)
@@ -286,7 +298,7 @@ if __name__ == "__main__":
         print()
         
         # 4. 保存结果
-        save_analysis_result(result)
+        save_analysis_result(result, cache_dir, TARGET_USERNAME)
         
         # 5. 统计信息
         if isinstance(result, dict) and "interests" in result:

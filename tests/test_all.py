@@ -560,6 +560,15 @@ class TestJsonStore:
         from xcrawler.storage.json_store import load_json
         assert load_json(str(tmp_path / "missing.json"), default=[]) == []
 
+    def test_json_store_append_record(self, tmp_path):
+        from xcrawler.storage.json_store import JsonStore
+
+        store = JsonStore(str(tmp_path))
+        store.append_json_record("runs.json", {"id": "1"})
+        store.append_json_record("runs.json", {"id": "2"})
+
+        assert store.load_json("runs.json") == [{"id": "1"}, {"id": "2"}]
+
 
 class TestConfig:
     """测试 xcrawler.config"""
@@ -770,6 +779,74 @@ class TestCli:
             data = tomllib.load(f)
 
         assert data["project"]["scripts"]["xcrawler"] == "xcrawler.cli:main"
+
+
+class TestAnalysisRuns:
+    """测试 analysis run 记录"""
+
+    def test_record_and_load_analysis_run(self, tmp_path):
+        from xcrawler.services.analysis_runs import create_analysis_run, record_analysis_run, load_analysis_runs
+        from xcrawler.storage.json_store import JsonStore
+
+        store = JsonStore(str(tmp_path))
+        run = create_analysis_run(
+            username="alice",
+            analysis_type="interest",
+            model="deepseek-chat",
+            params={"temperature": 0.2},
+            input_range={"translated_records": 12},
+        )
+        record_analysis_run(store, run)
+
+        records = load_analysis_runs(store)
+        assert records[0]["username"] == "alice"
+        assert records[0]["analysis_type"] == "interest"
+        assert records[0]["params"]["temperature"] == 0.2
+        assert records[0]["input_range"]["translated_records"] == 12
+
+
+class TestFetchPlan:
+    """测试抓取计划估算"""
+
+    def test_fetch_plan_estimates_requests_and_tweets(self):
+        from xcrawler.services.fetch_plan import build_fetch_plan
+
+        plan = build_fetch_plan("alice", pages=3)
+
+        assert plan.estimated_requests == 3
+        assert plan.estimated_max_tweets == 300
+        assert plan.to_dict()["username"] == "alice"
+
+
+class TestLLMProvider:
+    """测试 LLM Provider 抽象"""
+
+    def test_llm_response_to_dict(self):
+        from xcrawler.llm.provider import LLMResponse
+
+        response = LLMResponse(content="hello", model="m", provider="test", total_tokens=3)
+
+        assert response.to_dict()["content"] == "hello"
+        assert response.to_dict()["total_tokens"] == 3
+
+    @patch("xcrawler.llm.provider.OpenAI")
+    def test_openai_compatible_provider_wraps_response(self, mock_openai):
+        from xcrawler.llm.provider import OpenAICompatibleProvider
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = " result "
+        mock_response.usage.prompt_tokens = 1
+        mock_response.usage.completion_tokens = 2
+        mock_response.usage.total_tokens = 3
+        mock_openai.return_value.chat.completions.create.return_value = mock_response
+
+        provider = OpenAICompatibleProvider(api_key="key", base_url="https://example.com", name="test")
+        response = provider.chat([{"role": "user", "content": "hi"}], model="m", temperature=0.1)
+
+        assert response.content == "result"
+        assert response.provider == "test"
+        assert response.total_tokens == 3
 
 
 class TestVisualizeEvidence:
