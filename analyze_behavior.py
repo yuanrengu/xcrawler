@@ -4,7 +4,9 @@ import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.storage.json_store import JsonStore
 
 # 尝试导入可选依赖
 try:
@@ -259,7 +261,7 @@ def main():
     print(f"📊 行为分析: 时间模式 + 生活事件")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60 + "\n")
-    
+
     # 1. 加载数据
     raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
     translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
@@ -274,6 +276,14 @@ def main():
     
     with open(translated_file, 'r', encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
+
+    run = create_analysis_run(
+        username=TARGET_USERNAME,
+        analysis_type="behavior",
+        model=LLM_MODEL if AI_AVAILABLE else None,
+        params={"include_sensitive_events": args.include_sensitive_events},
+        input_range={"raw_tweets": len(raw_tweets), "translated_records": len(translated_data)},
+    )
     
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")
     
@@ -308,6 +318,7 @@ def main():
     # 5. 保存结果
     result = {
         "username": TARGET_USERNAME,
+        "analysis_run_id": run.id,
         "analysis_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "time_analysis": time_analysis,
         "life_events": life_events,
@@ -321,6 +332,7 @@ def main():
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_behavior.json")
     with open(result_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
+    record_analysis_run(JsonStore(CACHE_DIR), complete_analysis_run(run))
     print(f"💾 行为分析已保存至: {result_file}\n")
     
     # 6. 输出结果

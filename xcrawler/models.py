@@ -92,6 +92,8 @@ class AnalysisRun:
     model: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    input_range: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

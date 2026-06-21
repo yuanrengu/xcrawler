@@ -101,7 +101,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试 🆕
-│   └── test_all.py                      # 78 个测试用例（pytest）
+│   └── test_all.py                      # 83 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明 🆕
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -904,7 +904,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 78 个单元测试，使用 pytest 运行：
+项目包含 83 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -941,13 +941,16 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestExportCsvHelpers | 2 | CSV 导出 |
 | TestXcrawlerTextUtils | 2 | 公共文本工具 |
 | TestXcrawlerTimeUtils | 1 | 公共时间工具 |
-| TestJsonStore | 2 | 公共 JSON 读写 |
+| TestJsonStore | 3 | 公共 JSON 读写和 append |
 | TestConfig | 1 | 公共配置覆盖 |
 | TestModels | 2 | 核心数据模型 |
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
 | TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
 | TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
 | TestCli | 4 | 统一 CLI 参数解析和转发 |
+| TestAnalysisRuns | 1 | 分析运行记录 |
+| TestFetchPlan | 1 | 抓取请求量预估 |
+| TestLLMProvider | 2 | LLM Provider 响应封装 |
 | TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
 | TestTranslationService | 2 | 公共翻译服务 |
 | TestXApiClient | 1 | 公共 X API client |
@@ -965,10 +968,15 @@ xcrawler/
 ├── clients/
 │   ├── llm.py             # OpenAI/DeepSeek 兼容客户端
 │   └── x_api.py           # X API 用户与推文接口
+├── llm/
+│   └── provider.py        # LLMProvider / DeepSeekProvider 抽象
 ├── services/
+│   ├── analysis_runs.py   # 分析运行记录
+│   ├── fetch_plan.py      # 抓取请求量预估
 │   ├── records.py         # translated.json 新旧格式兼容
 │   └── translation.py     # 单条/批量翻译与响应解析
 ├── storage/
+│   ├── base.py            # Storage 接口
 │   └── json_store.py      # JSON 读写与目录创建
 └── utils/
     ├── text.py            # 文本清洗与语言检测
@@ -976,6 +984,12 @@ xcrawler/
 ```
 
 `xcrawler` 是当前推荐入口；旧脚本仍然保留，作为兼容已有流程的 legacy 入口。
+
+### 存储与 Provider
+
+当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始与完成时间。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
+
+LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。现有脚本仍复用旧调用路径，后续可逐步迁移到 Provider，以统一记录 token、失败率和成本信息。
 
 ## 🔄 更新日志
 
@@ -987,7 +1001,7 @@ xcrawler/
 - ✅ **翻译进度**：批量翻译现在实时显示批次进度
 - ✅ **lazy init**：OpenAI 客户端改为首次调用时创建，import 不再需要 API key
 - ✅ **translate_sync.py**：新增 `--user` 参数，与其他脚本统一
-- ✅ **单元测试**：新增 78 个 pytest 测试用例，覆盖所有纯函数和工具函数
+- ✅ **单元测试**：新增 83 个 pytest 测试用例，覆盖所有纯函数和工具函数
 - ✅ **Python 3.9 兼容**：添加 `from __future__ import annotations`
 
 ### v2.8.0 - 新功能：批量翻译 + CLI + 可视化 + 网络分析
