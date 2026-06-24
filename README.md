@@ -917,7 +917,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 92 个单元测试，使用 pytest 运行：
+项目包含 93 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -966,7 +966,7 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestFetchPlan | 1 | 抓取请求量预估 |
 | TestLLMProvider | 2 | LLM Provider 响应封装 |
 | TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
-| TestTranslationService | 2 | 公共翻译服务 |
+| TestTranslationService | 3 | 公共翻译服务与 usage metrics |
 | TestXApiClient | 1 | 公共 X API client |
 
 ## 🧱 模块化结构
@@ -1002,9 +1002,9 @@ xcrawler/
 
 ### 存储与 Provider
 
-当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始/完成时间、运行状态、耗时、LLM 调用次数、token 用量、失败类型和失败批次。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
+当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始/完成时间、运行状态、耗时、LLM 调用次数、token 用量、失败类型和失败批次。主抓取流程的翻译阶段会在 `{username}_analysis.json` 的 `stats` 中记录翻译 LLM 调用次数、token 用量和失败批次。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
 
-LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析已接入 Provider，可记录 provider、模型和 token 用量；翻译批处理仍保留专用路径，并通过执行计划、缓存、失败列表和批大小校验控制慢任务风险。
+LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析已接入 Provider，可记录 provider、模型、token 用量和 latency；翻译批处理仍保留专用路径，但已补充执行计划、缓存、失败列表、批大小校验和 usage metrics。
 
 ## 🔄 更新日志
 

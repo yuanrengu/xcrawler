@@ -81,6 +81,7 @@ ensure_dir(CACHE_DIR)
 
 # 翻译缓存
 translation_cache: dict[str, str] = {}
+translation_metrics: dict[str, int] = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
 
 def load_translation_cache():
     """加载翻译缓存"""
@@ -100,6 +101,7 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
         client_factory=_get_ds_client,
         model=LLM_MODEL,
         max_retries=MAX_RETRIES,
+        metrics=translation_metrics,
     )
 
 
@@ -123,6 +125,7 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         batch_size=BATCH_SIZE,
         max_retries=MAX_RETRIES,
         fallback_translate=deepseek_translate,
+        metrics=translation_metrics,
     )
 
 
@@ -210,7 +213,7 @@ def print_execution_plan(*, max_pages: int, batch_size: int, no_translate: bool,
 # 主流程
 # ======================
 def main():
-    global translation_cache, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR, ANALYSIS_LIMIT
+    global translation_cache, translation_metrics, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR, ANALYSIS_LIMIT
 
     # 应用 CLI 参数（覆盖 .env 默认值）
     args = parse_args()
@@ -235,6 +238,7 @@ def main():
     
     # 加载翻译缓存
     translation_cache = load_translation_cache()
+    translation_metrics = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
     print(f"💾 已加载翻译缓存: {len(translation_cache)} 条\n")
     print_execution_plan(
         max_pages=MAX_PAGES,
@@ -334,6 +338,12 @@ def main():
         save_translation_cache(translation_cache)
         batches = max(1, (len(all_texts) + BATCH_SIZE - 1) // BATCH_SIZE)
         print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
+        print(f"📈 翻译 LLM 调用: {translation_metrics['llm_calls']} 次")
+        if translation_metrics.get("total_tokens"):
+            print(f"   Token 用量: {translation_metrics['total_tokens']}")
+        if translation_metrics.get("failed_batches"):
+            print(f"   失败批次: {translation_metrics['failed_batches']}")
+        print()
 
         # 保存失败列表供下次重试
         if failed_list:
@@ -408,6 +418,9 @@ def main():
                 "raw_tweets": len(raw_tweets),
                 "translated_tweets": len(translated),
                 "analyzed_tweets": len(analysis_texts),
+                "translation_llm_calls": translation_metrics["llm_calls"],
+                "translation_total_tokens": translation_metrics.get("total_tokens") or None,
+                "translation_failed_batches": translation_metrics["failed_batches"],
                 "clusters": cluster_num,
                 "language_distribution": dict(lang_stats)
             },

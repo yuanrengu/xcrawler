@@ -870,6 +870,7 @@ class TestAnalysisRuns:
             create_analysis_run,
             fail_analysis_run,
             load_analysis_runs,
+            partial_analysis_run,
             record_analysis_run,
         )
         from xcrawler.storage.json_store import JsonStore
@@ -877,9 +878,14 @@ class TestAnalysisRuns:
         store = JsonStore(str(tmp_path))
         ok_run = complete_analysis_run(create_analysis_run(username="alice", analysis_type="interest"))
         failed_run = fail_analysis_run(create_analysis_run(username="alice", analysis_type="sentiment"), ValueError("bad"))
+        partial_run = partial_analysis_run(
+            create_analysis_run(username="alice", analysis_type="behavior"),
+            failed_batches=1,
+        )
 
         record_analysis_run(store, ok_run)
         record_analysis_run(store, failed_run)
+        record_analysis_run(store, partial_run)
 
         records = load_analysis_runs(store)
         assert records[0]["status"] == "success"
@@ -887,6 +893,8 @@ class TestAnalysisRuns:
         assert records[1]["status"] == "failed"
         assert records[1]["error_type"] == "ValueError"
         assert records[1]["error_message"] == "bad"
+        assert records[2]["status"] == "partial"
+        assert records[2]["failed_batches"] == 1
 
 
 class TestSentimentFailures:
@@ -963,6 +971,7 @@ class TestLLMProvider:
         assert response.content == "result"
         assert response.provider == "test"
         assert response.total_tokens == 3
+        assert response.latency_ms is not None
 
 
 class TestVisualizeEvidence:
@@ -1044,6 +1053,34 @@ class TestTranslationService:
             model="test",
             max_retries=1,
         ) == "你好"
+
+    def test_translate_batch_records_usage_metrics(self):
+        from xcrawler.services.translation import translate_batch
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[1] 你好"
+        mock_response.usage.total_tokens = 11
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_response
+        metrics = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
+
+        result = translate_batch(
+            ["hello"],
+            detected_langs=["en"],
+            use_cache=False,
+            cache={},
+            client_factory=lambda: client,
+            model="test",
+            batch_size=1,
+            max_retries=1,
+            fallback_translate=lambda text, lang, use_cache: None,
+            metrics=metrics,
+        )
+
+        assert result == ["你好"]
+        assert metrics["llm_calls"] == 1
+        assert metrics["total_tokens"] == 11
 
 
 class TestXApiClient:

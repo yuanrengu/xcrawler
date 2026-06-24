@@ -4,14 +4,13 @@ import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
-from xcrawler.llm.provider import DeepSeekProvider
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
 
 # 尝试导入可选依赖
 try:
-    from openai import OpenAI
+    from xcrawler.llm.provider import DeepSeekProvider
     from dotenv import load_dotenv
     _ = load_dotenv()
     AI_AVAILABLE = True
@@ -300,6 +299,7 @@ def main():
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")
     
     try:
+        failed_steps = 0
         print("📋 执行计划:")
         print(f"   时间分析输入: {len(raw_tweets)} 条原始推文")
         print(f"   生活事件检测输入: 前 {min(200, len(translated_data))} 条翻译记录")
@@ -321,6 +321,7 @@ def main():
                 print("✅ 事件检测完成\n")
             else:
                 print("⚠️ 事件检测失败\n")
+                failed_steps += 1
                 life_events = {}
         else:
             print("⚠️ 跳过AI事件检测\n")
@@ -330,7 +331,11 @@ def main():
         if AI_AVAILABLE:
             print("🧠 生成行为特征总结...")
             behavior_summary = generate_behavior_summary(time_analysis, life_events)
-            print("✅ 总结生成完成\n")
+            if behavior_summary == "无法生成总结":
+                failed_steps += 1
+                print("⚠️ 总结生成失败\n")
+            else:
+                print("✅ 总结生成完成\n")
         else:
             behavior_summary = "需要安装 openai 和 python-dotenv 才能使用AI分析功能"
     except Exception as e:
@@ -352,6 +357,7 @@ def main():
             "life_event_sample_records": min(200, len(translated_data)),
             "life_event_sampling_strategy": "first_200_translated_records",
         },
+        "failed_steps": failed_steps,
         "behavior_summary": behavior_summary
     }
     
@@ -360,7 +366,10 @@ def main():
         json.dump(result, f, ensure_ascii=False, indent=2)
     run.llm_calls = LLM_METRICS["calls"]
     run.total_tokens = LLM_METRICS["total_tokens"] or None
-    record_analysis_run(store, complete_analysis_run(run))
+    if failed_steps:
+        record_analysis_run(store, partial_analysis_run(run, failed_batches=failed_steps))
+    else:
+        record_analysis_run(store, complete_analysis_run(run))
     print(f"💾 行为分析已保存至: {result_file}\n")
     
     # 6. 输出结果

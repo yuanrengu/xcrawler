@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from time import perf_counter
 from typing import Any, Protocol
 
 from openai import OpenAI
@@ -14,6 +15,7 @@ class LLMResponse:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    latency_ms: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -32,11 +34,13 @@ class OpenAICompatibleProvider:
         self.client = OpenAI(api_key=api_key, base_url=base_url)
 
     def chat(self, messages: list[dict[str, str]], *, model: str, temperature: float = 0.0) -> LLMResponse:
+        started = perf_counter()
         response = self.client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
         )
+        latency_ms = int((perf_counter() - started) * 1000)
         usage = getattr(response, "usage", None)
         return LLMResponse(
             content=response.choices[0].message.content.strip(),
@@ -45,6 +49,7 @@ class OpenAICompatibleProvider:
             prompt_tokens=getattr(usage, "prompt_tokens", None),
             completion_tokens=getattr(usage, "completion_tokens", None),
             total_tokens=getattr(usage, "total_tokens", None),
+            latency_ms=latency_ms,
         )
 
 
