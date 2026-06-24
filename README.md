@@ -65,6 +65,8 @@
 ### 8. 统一 CLI 与批量翻译
 - ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等命令行参数
 - ✅ **参数覆盖**：CLI 参数优先于 `.env` 配置
+- ✅ **参数校验**：非法页数、批大小、温度和 Top N 会在启动时直接报错
+- ✅ **执行计划**：抓取、翻译和分析任务会在运行前显示预估页数、批次和 LLM 调用范围
 - ✅ **批量翻译**：每批 10 条推文合并为一次 API 调用，费用降低 5-10 倍
 - ✅ **自动回退**：批量翻译失败时自动回退到单条翻译
 
@@ -414,8 +416,11 @@ xcrawler analyze behavior    # 行为分析
 # 指定用户和抓取页数
 xcrawler fetch -u MiracleHe --pages 10
 
+# 限制后续聚类/画像最多分析的翻译推文数，避免大数据集过慢
+xcrawler fetch -u MiracleHe --pages 10 --analysis-limit 500
+
 # 指定用户和模型
-xcrawler analyze interest -u MiracleHe --model deepseek-chat
+xcrawler analyze interest -u MiracleHe --model deepseek-chat --limit 300
 
 # 增量抓取指定用户和目标日期
 xcrawler fetch-more -u MiracleHe --target-date 2023-01-01
@@ -447,10 +452,14 @@ xcrawler analyze --help
 | `--pages` | 抓取页数 | ✅ | ✅ | - | - | - |
 | `--model` | LLM 模型名 | ✅ | - | ✅ | - | - |
 | `--batch-size` | 每批翻译条数 | ✅ | - | - | - | - |
+| `--analysis-limit` | 聚类和画像最多分析的翻译推文数 | ✅ | - | - | - | - |
 | `--target-date` | 历史目标日期 | - | ✅ | - | - | - |
 | `--cache-dir` | 缓存目录 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `--temperature` | 模型温度 | - | - | ✅ | - | - |
+| `--limit` | 兴趣画像最多分析的翻译文本数 | - | - | ✅ | - | - |
 | `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
+
+CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。
 
 ### 5. 数据可视化
 
@@ -507,6 +516,8 @@ xcrawler analyze sentiment -u MiracleHe --top 10
 - `cache/charts/{username}_sentiment.png` - 情感时间趋势图
 - `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
 - `cache/{username}_sentiment.json` - 情感分析数据
+
+如果某个 LLM 批次调用失败或响应无法解析，对应推文会标记为 `unknown`，不会被误计为 `neutral`。
 
 ### 8. CSV 导出
 
@@ -906,7 +917,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 84 个单元测试，使用 pytest 运行：
+项目包含 93 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）
@@ -931,7 +942,7 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestDetectLanguage | 4 | 语言检测 + 容错 |
 | TestTranslationCache | 3 | 缓存读写/损坏恢复 |
 | TestDeepseekTranslate | 5 | 单条翻译 + mock API |
-| TestDeepseekTranslateBatch | 3 | 批量翻译 + mock API |
+| TestDeepseekTranslateBatch | 4 | 批量翻译 + mock API + 批大小保护 |
 | TestClusterCalculation | 4 | 聚类数动态计算 |
 | TestParseTwitterDatetime | 3 | 时间戳解析容错 |
 | TestParseDt | 2 | 可视化时间解析 |
@@ -949,12 +960,13 @@ python3 -m pytest tests/test_all.py --tb=short
 | TestTranslationRecords | 2 | 翻译记录兼容层 |
 | TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
 | TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
-| TestCli | 5 | 统一 CLI 参数解析和转发 |
-| TestAnalysisRuns | 1 | 分析运行记录 |
+| TestCli | 8 | 统一 CLI 参数解析、校验和转发 |
+| TestAnalysisRuns | 2 | 分析运行记录与成功/失败状态 |
+| TestSentimentFailures | 2 | 情感分析失败不污染 neutral + token 统计 |
 | TestFetchPlan | 1 | 抓取请求量预估 |
 | TestLLMProvider | 2 | LLM Provider 响应封装 |
 | TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
-| TestTranslationService | 2 | 公共翻译服务 |
+| TestTranslationService | 3 | 公共翻译服务与 usage metrics |
 | TestXApiClient | 1 | 公共 X API client |
 
 ## 🧱 模块化结构
@@ -981,6 +993,7 @@ xcrawler/
 │   ├── base.py            # Storage 接口
 │   └── json_store.py      # JSON 读写与目录创建
 └── utils/
+    ├── cli_validation.py  # CLI 数值参数校验
     ├── text.py            # 文本清洗与语言检测
     └── time.py            # Twitter 时间解析
 ```
@@ -989,9 +1002,9 @@ xcrawler/
 
 ### 存储与 Provider
 
-当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始与完成时间。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
+当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始/完成时间、运行状态、耗时、LLM 调用次数、token 用量、失败类型和失败批次。主抓取流程的翻译阶段会在 `{username}_analysis.json` 的 `stats` 中记录翻译 LLM 调用次数、token 用量和失败批次。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
 
-LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。现有脚本仍复用旧调用路径，后续可逐步迁移到 Provider，以统一记录 token、失败率和成本信息。
+LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析已接入 Provider，可记录 provider、模型、token 用量和 latency；翻译批处理仍保留专用路径，但已补充执行计划、缓存、失败列表、批大小校验和 usage metrics。
 
 ## 🔄 更新日志
 
@@ -999,9 +1012,10 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装
 - ✅ **模块化封装**：抽出 config、paths、storage、clients、services、utils 等公共模块，旧脚本保持兼容
 - ✅ **统一 CLI**：新增 `xcrawler fetch/translate/analyze/report/export` 入口，README 以统一 CLI 为主路径
+- ✅ **慢任务保护**：新增参数校验、执行计划、`--analysis-limit` 和兴趣分析 `--limit`
 - ✅ **证据追溯**：保留 `tweet_id`，兴趣画像和报告支持 `evidence_tweet_ids`
 - ✅ **隐私保护**：敏感生活事件默认隐藏，HTML 报告证据原文默认脱敏
-- ✅ **运行记录**：新增 `analysis_runs.json`，关联分析结果、模型、参数、输入范围和时间
+- ✅ **运行记录**：新增 `analysis_runs.json`，关联分析结果、模型、参数、输入范围、时间、状态、耗时、token 和失败批次
 - ✅ **Provider 与存储抽象**：新增 `Storage`、`JsonStore`、`LLMProvider`、DeepSeek/OpenAI 兼容 Provider
 - ✅ **开源协作**：新增 `CONTRIBUTING.md`、`SECURITY.md`、`RELEASE_CHECKLIST.md`
 

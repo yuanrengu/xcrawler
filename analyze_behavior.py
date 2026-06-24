@@ -4,13 +4,13 @@ import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
 
 # 尝试导入可选依赖
 try:
-    from openai import OpenAI
+    from xcrawler.llm.provider import DeepSeekProvider
     from dotenv import load_dotenv
     _ = load_dotenv()
     AI_AVAILABLE = True
@@ -31,10 +31,18 @@ if AI_AVAILABLE:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
-    ds_client = OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url=DEEPSEEK_BASE_URL
-    )
+    llm_provider = DeepSeekProvider(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+else:
+    LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+    llm_provider = None
+
+LLM_METRICS = {"calls": 0, "total_tokens": 0}
+
+
+def _record_llm_tokens(total_tokens):
+    LLM_METRICS["calls"] += 1
+    if total_tokens is not None:
+        LLM_METRICS["total_tokens"] += total_tokens
 
 def analyze_time_patterns(raw_tweets):
     """分析发推时间模式"""
@@ -156,12 +164,9 @@ def detect_life_events(translated_data):
 """
     
     try:
-        r = ds_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        result = r.choices[0].message.content.strip()
+        r = llm_provider.chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0)
+        _record_llm_tokens(r.total_tokens)
+        result = r.content
         
         # 尝试解析 JSON
         import re
@@ -229,12 +234,9 @@ def generate_behavior_summary(time_analysis, life_events):
 """
     
     try:
-        r = ds_client.chat.completions.create(
-            model=LLM_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        return r.choices[0].message.content.strip()
+        r = llm_provider.chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0.3)
+        _record_llm_tokens(r.total_tokens)
+        return r.content
     except Exception as e:
         print(f"❌ 总结生成失败: {str(e)}")
         return "无法生成总结"
@@ -255,6 +257,8 @@ def main():
         TARGET_USERNAME = args.user
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
+    LLM_METRICS["calls"] = 0
+    LLM_METRICS["total_tokens"] = 0
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
@@ -277,43 +281,66 @@ def main():
     with open(translated_file, 'r', encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
 
+    store = JsonStore(CACHE_DIR)
     run = create_analysis_run(
         username=TARGET_USERNAME,
         analysis_type="behavior",
         model=LLM_MODEL if AI_AVAILABLE else None,
         params={"include_sensitive_events": args.include_sensitive_events},
-        input_range={"raw_tweets": len(raw_tweets), "translated_records": len(translated_data)},
+        input_range={
+            "raw_tweets": len(raw_tweets),
+            "translated_records": len(translated_data),
+            "life_event_sample_records": min(200, len(translated_data)),
+            "life_event_sampling_strategy": "first_200_translated_records",
+        },
+        config={"provider": llm_provider.name if llm_provider else None},
     )
     
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")
     
-    # 2. 时间行为分析
-    print("⏰ 分析发推时间模式...")
-    time_analysis = analyze_time_patterns(raw_tweets)
-    print("✅ 时间分析完成\n")
-    
-    # 3. 生活事件检测
-    if AI_AVAILABLE:
-        print("🔍 检测生活事件（使用AI）...")
-        life_events = detect_life_events(translated_data)
-        if life_events:
-            life_events = _normalize_life_events(life_events)
-            life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
-            print("✅ 事件检测完成\n")
+    try:
+        failed_steps = 0
+        print("📋 执行计划:")
+        print(f"   时间分析输入: {len(raw_tweets)} 条原始推文")
+        print(f"   生活事件检测输入: 前 {min(200, len(translated_data))} 条翻译记录")
+        print(f"   LLM 调用: {'最多 2 次（事件检测 + 行为总结）' if AI_AVAILABLE else '0 次'}")
+        print()
+
+        # 2. 时间行为分析
+        print("⏰ 分析发推时间模式...")
+        time_analysis = analyze_time_patterns(raw_tweets)
+        print("✅ 时间分析完成\n")
+        
+        # 3. 生活事件检测
+        if AI_AVAILABLE:
+            print("🔍 检测生活事件（使用AI）...")
+            life_events = detect_life_events(translated_data)
+            if life_events:
+                life_events = _normalize_life_events(life_events)
+                life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
+                print("✅ 事件检测完成\n")
+            else:
+                print("⚠️ 事件检测失败\n")
+                failed_steps += 1
+                life_events = {}
         else:
-            print("⚠️ 事件检测失败\n")
+            print("⚠️ 跳过AI事件检测\n")
             life_events = {}
-    else:
-        print("⚠️ 跳过AI事件检测\n")
-        life_events = {}
-    
-    # 4. 生成行为总结
-    if AI_AVAILABLE:
-        print("🧠 生成行为特征总结...")
-        behavior_summary = generate_behavior_summary(time_analysis, life_events)
-        print("✅ 总结生成完成\n")
-    else:
-        behavior_summary = "需要安装 openai 和 python-dotenv 才能使用AI分析功能"
+        
+        # 4. 生成行为总结
+        if AI_AVAILABLE:
+            print("🧠 生成行为特征总结...")
+            behavior_summary = generate_behavior_summary(time_analysis, life_events)
+            if behavior_summary == "无法生成总结":
+                failed_steps += 1
+                print("⚠️ 总结生成失败\n")
+            else:
+                print("✅ 总结生成完成\n")
+        else:
+            behavior_summary = "需要安装 openai 和 python-dotenv 才能使用AI分析功能"
+    except Exception as e:
+        record_analysis_run(store, fail_analysis_run(run, e))
+        raise
     
     # 5. 保存结果
     result = {
@@ -326,13 +353,23 @@ def main():
             "include_sensitive_events": args.include_sensitive_events,
             "sensitive_events_redacted": not args.include_sensitive_events,
         },
+        "sampling": {
+            "life_event_sample_records": min(200, len(translated_data)),
+            "life_event_sampling_strategy": "first_200_translated_records",
+        },
+        "failed_steps": failed_steps,
         "behavior_summary": behavior_summary
     }
     
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_behavior.json")
     with open(result_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
-    record_analysis_run(JsonStore(CACHE_DIR), complete_analysis_run(run))
+    run.llm_calls = LLM_METRICS["calls"]
+    run.total_tokens = LLM_METRICS["total_tokens"] or None
+    if failed_steps:
+        record_analysis_run(store, partial_analysis_run(run, failed_batches=failed_steps))
+    else:
+        record_analysis_run(store, complete_analysis_run(run))
     print(f"💾 行为分析已保存至: {result_file}\n")
     
     # 6. 输出结果

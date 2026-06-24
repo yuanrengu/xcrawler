@@ -10,6 +10,16 @@ from xcrawler.utils.text import detect_language
 ClientFactory = Callable[[], object]
 
 
+def _record_usage(metrics: dict[str, int] | None, response: object) -> None:
+    if metrics is None:
+        return
+    metrics["llm_calls"] = metrics.get("llm_calls", 0) + 1
+    usage = getattr(response, "usage", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    if isinstance(total_tokens, int):
+        metrics["total_tokens"] = metrics.get("total_tokens", 0) + total_tokens
+
+
 def parse_batch_response(response: str, expected_count: int) -> list[str]:
     lines = response.strip().split("\n")
     results = []
@@ -37,6 +47,7 @@ def translate_text(
     client_factory: ClientFactory,
     model: str,
     max_retries: int,
+    metrics: dict[str, int] | None = None,
 ) -> str | None:
     if use_cache and text in cache:
         return cache[text]
@@ -73,6 +84,7 @@ def translate_text(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
             )
+            _record_usage(metrics, response)
             result = response.choices[0].message.content.strip()
             if use_cache:
                 cache[text] = result
@@ -99,7 +111,11 @@ def translate_batch(
     batch_size: int,
     max_retries: int,
     fallback_translate: Callable[[str, str | None, bool], str | None],
+    metrics: dict[str, int] | None = None,
 ) -> list[str | None]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+
     n = len(texts)
     langs = [None] * n if detected_langs is None else list(detected_langs)
     results: list[str | None] = [None] * n
@@ -171,6 +187,7 @@ def translate_batch(
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                 )
+                _record_usage(metrics, response)
                 response_text = response.choices[0].message.content.strip()
                 parsed = parse_batch_response(response_text, current_batch_size)
 
@@ -188,6 +205,8 @@ def translate_batch(
                     time.sleep(2 ** attempt)
                 else:
                     print("❌ 批量翻译失败，回退到单条翻译...")
+                    if metrics is not None:
+                        metrics["failed_batches"] = metrics.get("failed_batches", 0) + 1
                     for idx in batch_indices:
                         results[idx] = fallback_translate(texts[idx], langs[idx], use_cache)
 

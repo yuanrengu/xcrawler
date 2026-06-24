@@ -21,6 +21,7 @@ from xcrawler.services.translation import (
     translate_text,
 )
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
 
@@ -41,16 +42,19 @@ MAX_RETRIES = 3
 MAX_WORKERS = 5
 CACHE_DIR = "cache"
 BATCH_SIZE = 10
+ANALYSIS_LIMIT = 1000
 
 
 def parse_args():
     """解析 CLI 参数，覆盖 .env 默认值"""
     parser = argparse.ArgumentParser(description="Twitter 用户数据抓取 + 翻译 + 聚类分析")
     parser.add_argument("-u", "--user", help="目标用户名（覆盖 .env 中的 TARGET_USERNAME）")
-    parser.add_argument("--pages", type=int, help=f"抓取页数，每页100条（默认 {MAX_PAGES}）")
-    parser.add_argument("--batch-size", type=int, help=f"每批翻译条数（默认 {BATCH_SIZE}）")
+    parser.add_argument("--pages", type=cli_validation.positive_int, help=f"抓取页数，每页100条（默认 {MAX_PAGES}）")
+    parser.add_argument("--batch-size", type=cli_validation.positive_int, help=f"每批翻译条数（默认 {BATCH_SIZE}）")
     parser.add_argument("--model", help=f"LLM 模型名（默认 {LLM_MODEL}）")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
+    parser.add_argument("--analysis-limit", type=cli_validation.positive_int, default=ANALYSIS_LIMIT,
+                        help=f"聚类和画像最多分析的翻译推文数（默认 {ANALYSIS_LIMIT}）")
     parser.add_argument("--no-translate", action="store_true", help="跳过翻译，仅抓取")
     return parser.parse_args()
 
@@ -77,6 +81,7 @@ ensure_dir(CACHE_DIR)
 
 # 翻译缓存
 translation_cache: dict[str, str] = {}
+translation_metrics: dict[str, int] = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
 
 def load_translation_cache():
     """加载翻译缓存"""
@@ -96,6 +101,7 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
         client_factory=_get_ds_client,
         model=LLM_MODEL,
         max_retries=MAX_RETRIES,
+        metrics=translation_metrics,
     )
 
 
@@ -119,6 +125,7 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         batch_size=BATCH_SIZE,
         max_retries=MAX_RETRIES,
         fallback_translate=deepseek_translate,
+        metrics=translation_metrics,
     )
 
 
@@ -188,24 +195,40 @@ def fetch_tweets(user_id: str) -> list[dict]:
     """抓取推文，带错误处理和进度显示"""
     return x_api.fetch_user_tweets(user_id, HEADERS, MAX_PAGES, request_get=requests.get)
 
+
+def print_execution_plan(*, max_pages: int, batch_size: int, no_translate: bool, cache_size: int, analysis_limit: int) -> None:
+    max_tweets = max_pages * 100
+    estimated_batches = 0 if no_translate else (max_tweets + batch_size - 1) // batch_size
+    print("📋 执行计划:")
+    print(f"   预计最多抓取: {max_pages} 页 / {max_tweets} 条")
+    print(f"   翻译缓存: {cache_size} 条")
+    if no_translate:
+        print("   LLM 调用: 跳过翻译和画像分析")
+    else:
+        print(f"   预计最多翻译批次: {estimated_batches} 批（实际会扣除中文和缓存命中）")
+        print(f"   后续步骤: 向量化聚类 + 画像摘要（最多 {analysis_limit} 条）")
+    print()
+
 # ======================
 # 主流程
 # ======================
 def main():
-    global translation_cache, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR
+    global translation_cache, translation_metrics, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR, ANALYSIS_LIMIT
 
     # 应用 CLI 参数（覆盖 .env 默认值）
     args = parse_args()
     if args.user:
         TARGET_USERNAME = args.user
-    if args.pages:
+    if args.pages is not None:
         MAX_PAGES = args.pages
-    if args.batch_size:
+    if args.batch_size is not None:
         BATCH_SIZE = args.batch_size
     if args.model:
         LLM_MODEL = args.model
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
+    if args.analysis_limit is not None:
+        ANALYSIS_LIMIT = args.analysis_limit
     os.makedirs(CACHE_DIR, exist_ok=True)
 
     print("=" * 60)
@@ -215,7 +238,15 @@ def main():
     
     # 加载翻译缓存
     translation_cache = load_translation_cache()
+    translation_metrics = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
     print(f"💾 已加载翻译缓存: {len(translation_cache)} 条\n")
+    print_execution_plan(
+        max_pages=MAX_PAGES,
+        batch_size=BATCH_SIZE,
+        no_translate=args.no_translate,
+        cache_size=len(translation_cache),
+        analysis_limit=ANALYSIS_LIMIT,
+    )
     
     try:
         # 1. 获取用户ID
@@ -307,6 +338,12 @@ def main():
         save_translation_cache(translation_cache)
         batches = max(1, (len(all_texts) + BATCH_SIZE - 1) // BATCH_SIZE)
         print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
+        print(f"📈 翻译 LLM 调用: {translation_metrics['llm_calls']} 次")
+        if translation_metrics.get("total_tokens"):
+            print(f"   Token 用量: {translation_metrics['total_tokens']}")
+        if translation_metrics.get("failed_batches"):
+            print(f"   失败批次: {translation_metrics['failed_batches']}")
+        print()
 
         # 保存失败列表供下次重试
         if failed_list:
@@ -337,20 +374,24 @@ def main():
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")
             return
 
+        analysis_texts = translated[:ANALYSIS_LIMIT]
+        if len(translated) > len(analysis_texts):
+            print(f"⚠️ 长输入保护：已保存全部 {len(translated)} 条翻译，但聚类/画像仅分析前 {len(analysis_texts)} 条")
+
         # 4. 动态聚类
         # 动态确定聚类数量：每10条推文1个主题，最少2个，最多8个
-        cluster_num = max(2, min(8, len(translated) // 10))
+        cluster_num = max(2, min(8, len(analysis_texts) // 10))
         print(f"🔢 向量化 + 聚类（聚类数: {cluster_num}）...")
         
         # Lazy import
         from sentence_transformers import SentenceTransformer
         from sklearn.cluster import KMeans
         embed_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-        vectors = embed_model.encode(translated)
+        vectors = embed_model.encode(analysis_texts)
         labels = KMeans(n_clusters=cluster_num, random_state=42).fit_predict(vectors)
 
         clusters = {}
-        for label, text in zip(labels, translated):
+        for label, text in zip(labels, analysis_texts):
             clusters.setdefault(label, []).append(text)
 
         # 显示聚类结果
@@ -376,6 +417,10 @@ def main():
             "stats": {
                 "raw_tweets": len(raw_tweets),
                 "translated_tweets": len(translated),
+                "analyzed_tweets": len(analysis_texts),
+                "translation_llm_calls": translation_metrics["llm_calls"],
+                "translation_total_tokens": translation_metrics.get("total_tokens") or None,
+                "translation_failed_batches": translation_metrics["failed_batches"],
                 "clusters": cluster_num,
                 "language_distribution": dict(lang_stats)
             },

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -12,7 +12,24 @@ ANALYSIS_RUNS_KEY = "analysis_runs.json"
 
 
 def utc_now_iso() -> str:
-    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _duration_ms(started_at: str | None, completed_at: str | None) -> int | None:
+    started = _parse_iso(started_at)
+    completed = _parse_iso(completed_at)
+    if not started or not completed:
+        return None
+    return max(0, int((completed - started).total_seconds() * 1000))
 
 
 def create_analysis_run(
@@ -38,6 +55,29 @@ def create_analysis_run(
 
 def complete_analysis_run(run: AnalysisRun) -> AnalysisRun:
     run.completed_at = utc_now_iso()
+    run.status = "success"
+    run.duration_ms = _duration_ms(run.started_at, run.completed_at)
+    return run
+
+
+def fail_analysis_run(run: AnalysisRun, error: BaseException | str) -> AnalysisRun:
+    run.completed_at = utc_now_iso()
+    run.status = "failed"
+    run.duration_ms = _duration_ms(run.started_at, run.completed_at)
+    if isinstance(error, BaseException):
+        run.error_type = type(error).__name__
+        run.error_message = str(error)
+    else:
+        run.error_type = "Error"
+        run.error_message = error
+    return run
+
+
+def partial_analysis_run(run: AnalysisRun, *, failed_batches: int = 0) -> AnalysisRun:
+    run.completed_at = utc_now_iso()
+    run.status = "partial"
+    run.failed_batches = failed_batches
+    run.duration_ms = _duration_ms(run.started_at, run.completed_at)
     return run
 
 

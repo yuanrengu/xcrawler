@@ -230,6 +230,22 @@ class TestDeepseekTranslateBatch:
             assert result[0] == "已缓存"
             assert result[1] == "新翻译"
 
+    def test_batch_size_must_be_positive(self):
+        from xcrawler.services.translation import translate_batch
+
+        with pytest.raises(ValueError, match="batch_size"):
+            translate_batch(
+                ["hello"],
+                detected_langs=["en"],
+                use_cache=False,
+                cache={},
+                client_factory=lambda: None,
+                model="m",
+                batch_size=0,
+                max_retries=1,
+                fallback_translate=lambda text, lang, use_cache: None,
+            )
+
 
 class TestClusterCalculation:
     """测试聚类数动态计算逻辑"""
@@ -763,6 +779,31 @@ class TestCli:
         assert result == 0
         assert calls == [("main", ["--user", "alice", "--pages", "2", "--no-translate"])]
 
+    def test_fetch_forwards_analysis_limit(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["fetch", "--analysis-limit", "50"])
+
+        mock_run.assert_called_once_with("main", ["--analysis-limit", "50"])
+
+    def test_fetch_rejects_zero_pages(self):
+        from xcrawler import cli
+
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["fetch", "--pages", "0"])
+
+        assert exc.value.code == 2
+
+    def test_interest_rejects_invalid_temperature(self):
+        from xcrawler import cli
+
+        with pytest.raises(SystemExit) as exc:
+            cli.main(["analyze", "interest", "--temperature", "2.5"])
+
+        assert exc.value.code == 2
+
     def test_analyze_behavior_forwards_privacy_flag(self):
         from xcrawler import cli
 
@@ -771,6 +812,15 @@ class TestCli:
             cli.main(["analyze", "behavior", "--include-sensitive-events"])
 
         mock_run.assert_called_once_with("analyze_behavior", ["--include-sensitive-events"])
+
+    def test_analyze_interest_forwards_limit(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["analyze", "interest", "--limit", "25"])
+
+        mock_run.assert_called_once_with("analyze_pro", ["--limit", "25"])
 
     def test_translate_forwards_cache_dir(self):
         from xcrawler import cli
@@ -812,6 +862,71 @@ class TestAnalysisRuns:
         assert records[0]["analysis_type"] == "interest"
         assert records[0]["params"]["temperature"] == 0.2
         assert records[0]["input_range"]["translated_records"] == 12
+        assert records[0]["status"] == "running"
+
+    def test_complete_and_fail_analysis_run_status(self, tmp_path):
+        from xcrawler.services.analysis_runs import (
+            complete_analysis_run,
+            create_analysis_run,
+            fail_analysis_run,
+            load_analysis_runs,
+            partial_analysis_run,
+            record_analysis_run,
+        )
+        from xcrawler.storage.json_store import JsonStore
+
+        store = JsonStore(str(tmp_path))
+        ok_run = complete_analysis_run(create_analysis_run(username="alice", analysis_type="interest"))
+        failed_run = fail_analysis_run(create_analysis_run(username="alice", analysis_type="sentiment"), ValueError("bad"))
+        partial_run = partial_analysis_run(
+            create_analysis_run(username="alice", analysis_type="behavior"),
+            failed_batches=1,
+        )
+
+        record_analysis_run(store, ok_run)
+        record_analysis_run(store, failed_run)
+        record_analysis_run(store, partial_run)
+
+        records = load_analysis_runs(store)
+        assert records[0]["status"] == "success"
+        assert records[0]["duration_ms"] is not None
+        assert records[1]["status"] == "failed"
+        assert records[1]["error_type"] == "ValueError"
+        assert records[1]["error_message"] == "bad"
+        assert records[2]["status"] == "partial"
+        assert records[2]["failed_batches"] == 1
+
+
+class TestSentimentFailures:
+    """测试情感分析失败不会污染为 neutral"""
+
+    def test_failed_batch_stays_unknown(self):
+        from analyze_sentiment import batch_sentiment
+
+        client = MagicMock()
+        client.chat.side_effect = Exception("api down")
+
+        sentiments, stats = batch_sentiment(["hello", "world"], client, "model")
+
+        assert sentiments == ["unknown", "unknown"]
+        assert stats["failed_batches"] == 1
+
+    def test_successful_batch_records_tokens(self):
+        from analyze_sentiment import batch_sentiment
+        from xcrawler.llm.provider import LLMResponse
+
+        client = MagicMock()
+        client.chat.return_value = LLMResponse(
+            content="[1] positive\n[2] negative",
+            model="model",
+            provider="test",
+            total_tokens=7,
+        )
+
+        sentiments, stats = batch_sentiment(["great", "bad"], client, "model")
+
+        assert sentiments == ["positive", "negative"]
+        assert stats["total_tokens"] == 7
 
 
 class TestFetchPlan:
@@ -856,6 +971,7 @@ class TestLLMProvider:
         assert response.content == "result"
         assert response.provider == "test"
         assert response.total_tokens == 3
+        assert response.latency_ms is not None
 
 
 class TestVisualizeEvidence:
@@ -937,6 +1053,34 @@ class TestTranslationService:
             model="test",
             max_retries=1,
         ) == "你好"
+
+    def test_translate_batch_records_usage_metrics(self):
+        from xcrawler.services.translation import translate_batch
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[1] 你好"
+        mock_response.usage.total_tokens = 11
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_response
+        metrics = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
+
+        result = translate_batch(
+            ["hello"],
+            detected_langs=["en"],
+            use_cache=False,
+            cache={},
+            client_factory=lambda: client,
+            model="test",
+            batch_size=1,
+            max_retries=1,
+            fallback_translate=lambda text, lang, use_cache: None,
+            metrics=metrics,
+        )
+
+        assert result == ["你好"]
+        assert metrics["llm_calls"] == 1
+        assert metrics["total_tokens"] == 11
 
 
 class TestXApiClient:
