@@ -5,6 +5,8 @@ import importlib
 import sys
 from collections.abc import Sequence
 
+from xcrawler.utils import cli_validation
+
 
 def _run_script(module_name: str, args: Sequence[str]) -> int:
     module = importlib.import_module(module_name)
@@ -47,16 +49,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch = subparsers.add_parser("fetch", help="抓取数据、翻译并执行聚类分析")
     _add_common_options(fetch, model=True)
-    fetch.add_argument("--pages", type=int, help="抓取页数")
-    fetch.add_argument("--batch-size", type=int, help="每批翻译条数")
+    fetch.add_argument("--pages", type=cli_validation.positive_int, help="抓取页数")
+    fetch.add_argument("--batch-size", type=cli_validation.positive_int, help="每批翻译条数")
+    fetch.add_argument("--analysis-limit", type=cli_validation.positive_int, help="聚类和画像最多分析的翻译推文数")
     fetch.add_argument("--no-translate", action="store_true", help="仅抓取不翻译")
     fetch.set_defaults(handler=_handle_fetch)
 
     fetch_more = subparsers.add_parser("fetch-more", help="智能增量抓取新推文和历史推文")
     _add_common_options(fetch_more)
-    fetch_more.add_argument("--pages", type=int, help="最大抓取页数")
+    fetch_more.add_argument("--pages", type=cli_validation.positive_int, help="最大抓取页数")
     fetch_more.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
-    fetch_more.add_argument("--interval", type=int, help="请求间隔秒数")
+    fetch_more.add_argument("--interval", type=cli_validation.non_negative_int, help="请求间隔秒数")
     fetch_more.set_defaults(handler=_handle_fetch_more)
 
     translate = subparsers.add_parser("translate", help="同步或重翻已有原始推文")
@@ -69,7 +72,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     interest = analyze_subparsers.add_parser("interest", help="专业兴趣画像分析")
     _add_common_options(interest, model=True)
-    interest.add_argument("--temperature", type=float, help="模型温度")
+    interest.add_argument("--temperature", type=cli_validation.temperature, help="模型温度")
+    interest.add_argument("--limit", type=cli_validation.positive_int, help="最多分析的翻译文本数")
     interest.set_defaults(handler=_handle_analyze_interest)
 
     behavior = analyze_subparsers.add_parser("behavior", help="时间行为和生活事件分析")
@@ -80,12 +84,12 @@ def build_parser() -> argparse.ArgumentParser:
     sentiment = analyze_subparsers.add_parser("sentiment", help="情感分析")
     _add_common_options(sentiment)
     sentiment.add_argument("--output", help="输出目录")
-    sentiment.add_argument("--top", type=int, help="显示 Top N 正/负面推文")
+    sentiment.add_argument("--top", type=cli_validation.positive_int, help="显示 Top N 正/负面推文")
     sentiment.set_defaults(handler=_handle_analyze_sentiment)
 
     network = analyze_subparsers.add_parser("network", help="Hashtag / Mention 网络分析")
     _add_common_options(network)
-    network.add_argument("--top", type=int, help="显示 Top N 结果")
+    network.add_argument("--top", type=cli_validation.positive_int, help="显示 Top N 结果")
     network.add_argument("--output", help="输出目录")
     network.set_defaults(handler=_handle_analyze_network)
 
@@ -113,6 +117,8 @@ def _handle_fetch(args: argparse.Namespace) -> int:
         forwarded.extend(["--pages", str(args.pages)])
     if args.batch_size is not None:
         forwarded.extend(["--batch-size", str(args.batch_size)])
+    if args.analysis_limit is not None:
+        forwarded.extend(["--analysis-limit", str(args.analysis_limit)])
     if args.no_translate:
         forwarded.append("--no-translate")
     return _run_script("main", forwarded)
@@ -140,6 +146,8 @@ def _handle_analyze_interest(args: argparse.Namespace) -> int:
     forwarded = _forward_common(args, include_model=True)
     if args.temperature is not None:
         forwarded.extend(["--temperature", str(args.temperature)])
+    if args.limit is not None:
+        forwarded.extend(["--limit", str(args.limit)])
     return _run_script("analyze_pro", forwarded)
 
 

@@ -10,6 +10,7 @@ from collections import Counter
 
 from dotenv import load_dotenv
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.utils import cli_validation
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -20,7 +21,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Hashtag / Mention 网络分析")
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
-    parser.add_argument("--top", type=int, default=20, help="显示 Top N 结果（默认 20）")
+    parser.add_argument("--top", type=cli_validation.positive_int, default=20, help="显示 Top N 结果（默认 20）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
     return parser.parse_args()
 

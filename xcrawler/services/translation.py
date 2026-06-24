@@ -100,6 +100,9 @@ def translate_batch(
     max_retries: int,
     fallback_translate: Callable[[str, str | None, bool], str | None],
 ) -> list[str | None]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be >= 1")
+
     n = len(texts)
     langs = [None] * n if detected_langs is None else list(detected_langs)
     results: list[str | None] = [None] * n

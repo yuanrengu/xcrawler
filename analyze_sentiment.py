@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 from collections import Counter, defaultdict
 
 from dotenv import load_dotenv
+from xcrawler.llm.provider import DeepSeekProvider
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.storage.json_store import JsonStore
+from xcrawler.utils import cli_validation
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -21,18 +25,20 @@ def parse_args():
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
-    parser.add_argument("--top", type=int, default=10, help="显示 Top N 正/负面推文")
+    parser.add_argument("--top", type=cli_validation.positive_int, default=10, help="显示 Top N 正/负面推文")
     return parser.parse_args()
 
 
-def batch_sentiment(texts: list[str], client, model: str) -> list[str]:
+def batch_sentiment(texts: list[str], llm, model: str) -> tuple[list[str], dict[str, int]]:
     """批量情感打分：positive / neutral / negative"""
     import re
 
     BATCH = 20
-    results = ["neutral"] * len(texts)
+    results = ["unknown"] * len(texts)
+    stats = {"batches": 0, "failed_batches": 0, "total_tokens": 0}
 
     for start in range(0, len(texts), BATCH):
+        stats["batches"] += 1
         batch = texts[start:start + BATCH]
         numbered = "\n".join(f"[{i+1}] {t}" for i, t in enumerate(batch))
 
@@ -44,12 +50,10 @@ def batch_sentiment(texts: list[str], client, model: str) -> list[str]:
 {numbered}"""
 
         try:
-            r = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0
-            )
-            response = r.choices[0].message.content.strip()
+            r = llm.chat([{"role": "user", "content": prompt}], model=model, temperature=0)
+            if r.total_tokens is not None:
+                stats["total_tokens"] += r.total_tokens
+            response = r.content
             for line in response.split("\n"):
                 line = line.strip()
                 m = re.match(r'^\[?(\d+)\]?\s*[\.:：]?\s*(positive|neutral|negative)', line, re.I)
@@ -58,9 +62,10 @@ def batch_sentiment(texts: list[str], client, model: str) -> list[str]:
                     if 0 <= idx < len(batch):
                         results[start + idx] = m.group(2).lower()
         except Exception as e:
+            stats["failed_batches"] += 1
             print(f"   ⚠️ 批次情感分析失败: {e}")
 
-    return results
+    return results, stats
 
 
 def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, tz_offset):
@@ -116,9 +121,9 @@ def chart_sentiment_pie(sentiments, output_dir, username):
     import matplotlib.pyplot as plt
 
     counts = Counter(sentiments)
-    labels = ['Positive', 'Neutral', 'Negative']
-    sizes = [counts.get('positive', 0), counts.get('neutral', 0), counts.get('negative', 0)]
-    colors = ['#4CAF50', '#9E9E9E', '#F44336']
+    labels = ['Positive', 'Neutral', 'Negative', 'Unknown']
+    sizes = [counts.get('positive', 0), counts.get('neutral', 0), counts.get('negative', 0), counts.get('unknown', 0)]
+    colors = ['#4CAF50', '#9E9E9E', '#F44336', '#BDBDBD']
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
@@ -166,16 +171,33 @@ def main():
         return
 
     # 初始化 LLM
-    from openai import OpenAI
-    client = OpenAI(
+    provider = DeepSeekProvider(
         api_key=os.getenv("DEEPSEEK_API_KEY"),
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     )
     model = os.getenv("LLM_MODEL", "deepseek-chat")
+    store = JsonStore(CACHE_DIR)
+    run = create_analysis_run(
+        username=TARGET_USERNAME,
+        analysis_type="sentiment",
+        model=model,
+        params={"top": args.top},
+        input_range={"translated_records": len(translated_data), "texts": len(texts), "batch_size": 20},
+        config={"provider": provider.name},
+    )
+
+    print("📋 执行计划:")
+    print(f"   输入文本: {len(texts)} 条")
+    print(f"   预计 LLM 批次: {(len(texts) + 19) // 20} 批")
+    print("   失败策略: 失败或未解析项标记为 unknown，不计入 neutral")
+    print()
 
     # 批量情感打分
     print(f"🧠 批量情感打分（{len(texts)} 条）...")
-    sentiments = batch_sentiment(texts, client, model)
+    sentiments, run_stats = batch_sentiment(texts, provider, model)
+    run.llm_calls = run_stats["batches"]
+    run.failed_batches = run_stats["failed_batches"]
+    run.total_tokens = run_stats["total_tokens"] or None
 
     # 统计
     counts = Counter(sentiments)
@@ -184,6 +206,8 @@ def main():
     print(f"   ✅ Positive: {counts.get('positive', 0)} ({counts.get('positive', 0)/total*100:.1f}%)")
     print(f"   😐 Neutral:  {counts.get('neutral', 0)} ({counts.get('neutral', 0)/total*100:.1f}%)")
     print(f"   ❌ Negative: {counts.get('negative', 0)} ({counts.get('negative', 0)/total*100:.1f}%)")
+    if counts.get("unknown", 0):
+        print(f"   ⚠️ Unknown:  {counts.get('unknown', 0)} ({counts.get('unknown', 0)/total*100:.1f}%)")
 
     # Top 正面/负面推文
     pos_tweets = [(item, s) for item, s in zip(sentiment_inputs, sentiments) if s == "positive"]
@@ -215,6 +239,8 @@ def main():
         "distribution": dict(counts),
         "positive_ratio": round(counts.get("positive", 0) / total, 3),
         "negative_ratio": round(counts.get("negative", 0) / total, 3),
+        "unknown_ratio": round(counts.get("unknown", 0) / total, 3),
+        "failed_batches": run_stats["failed_batches"],
         "items": [
             {
                 "tweet_id": item.get("tweet_id"),
@@ -228,6 +254,10 @@ def main():
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_sentiment.json")
     with open(result_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
+    if run_stats["failed_batches"]:
+        record_analysis_run(store, partial_analysis_run(run, failed_batches=run_stats["failed_batches"]))
+    else:
+        record_analysis_run(store, complete_analysis_run(run))
     print(f"\n💾 结果已保存: {result_file}")
 
     print("\n" + "=" * 60)

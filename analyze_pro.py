@@ -5,11 +5,12 @@ import argparse
 from typing import List, Dict, Any
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from xcrawler.llm.provider import DeepSeekProvider, LLMResponse
 from xcrawler.services.evidence import validate_interest_evidence
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
+from xcrawler.utils import cli_validation
 
 # =========================
 # 初始化
@@ -26,10 +27,8 @@ if not API_KEY:
     raise RuntimeError("未检测到 API Key，请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
 
 
-client = OpenAI(
-    api_key=API_KEY,
-    base_url=BASE_URL
-)
+provider = DeepSeekProvider(api_key=API_KEY, base_url=BASE_URL)
+LAST_LLM_RESPONSE: LLMResponse | None = None
 
 
 def _ensure_interest_evidence_fields(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,16 +133,18 @@ def analyze_user_interest(
 
     prompt = PROMPT_TEMPLATE.format(user_text=joined_text)
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
+    global LAST_LLM_RESPONSE
+    response = provider.chat(
+        [
             {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。请务必输出合法的 JSON 格式。"},
             {"role": "user", "content": prompt}
         ],
+        model=MODEL,
         temperature=temperature
     )
+    LAST_LLM_RESPONSE = response
 
-    content = response.choices[0].message.content.strip()
+    content = response.content
 
     import re
     try:
@@ -242,7 +243,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="AI 驱动的专业兴趣画像分析")
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--model", help=f"LLM 模型名（默认 {MODEL}）")
-    parser.add_argument("--temperature", type=float, default=0.2, help="模型温度（默认 0.2）")
+    parser.add_argument("--temperature", type=cli_validation.temperature, default=0.2, help="模型温度（默认 0.2，范围 0-2）")
+    parser.add_argument("--limit", type=cli_validation.positive_int, default=300, help="最多分析的翻译文本数（默认 300）")
     parser.add_argument("--cache-dir", help="缓存目录")
     return parser.parse_args()
 
@@ -259,35 +261,53 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"📌 目标用户: {TARGET_USERNAME}")
     print()
+    run = None
+    store = JsonStore(cache_dir)
     
     try:
         # 1. 加载数据
         print("📂 加载翻译数据...")
         translated_records = load_translated_records(cache_dir, TARGET_USERNAME)
-        texts = [
+        all_texts = [
             f"[tweet_id={item.get('tweet_id') or 'unknown'}] {item['translated']}"
             for item in translated_records
             if item.get("translated")
         ]
-        print(f"✅ 已加载 {len(texts)} 条翻译文本")
+        texts = all_texts[:args.limit]
+        print(f"✅ 已加载 {len(all_texts)} 条翻译文本")
+        if len(all_texts) > len(texts):
+            print(f"⚠️ 长输入保护：仅分析前 {len(texts)} 条文本，可通过 --limit 调整")
         print()
         
         # 2. 执行分析
         print("🔍 开始分析用户兴趣画像...")
         print("⚙️  使用模型:", MODEL)
+        print("📋 执行计划:")
+        print(f"   输入文本: {len(texts)} / {len(all_texts)} 条")
+        print("   LLM 调用: 1 次兴趣画像分析")
+        print(f"   长输入保护: 最多 {args.limit} 条文本")
         print()
         run = create_analysis_run(
             username=TARGET_USERNAME,
             analysis_type="interest",
             model=MODEL,
-            params={"temperature": args.temperature},
-            input_range={"translated_records": len(translated_records), "texts": len(texts)},
+            params={"temperature": args.temperature, "limit": args.limit},
+            input_range={
+                "translated_records": len(translated_records),
+                "available_texts": len(all_texts),
+                "analyzed_texts": len(texts),
+                "strategy": "single_prompt_with_limit",
+            },
+            config={"provider": provider.name},
         )
         
         result = analyze_user_interest(texts, temperature=args.temperature)
         result = validate_interest_evidence(result, translated_records)
         result["analysis_run_id"] = run.id
-        record_analysis_run(JsonStore(cache_dir), complete_analysis_run(run))
+        run.llm_calls = 1
+        if LAST_LLM_RESPONSE:
+            run.total_tokens = LAST_LLM_RESPONSE.total_tokens
+        record_analysis_run(store, complete_analysis_run(run))
         
         # 3. 显示结果
         print("=" * 60)
@@ -318,18 +338,26 @@ if __name__ == "__main__":
         print("=" * 60)
         
     except FileNotFoundError as e:
+        if run:
+            record_analysis_run(store, fail_analysis_run(run, e))
         print(f"❌ 错误: {e}")
         print()
         print("💡 请先运行以下命令抓取数据:")
         print("   python3 main.py")
         
     except ValueError as e:
+        if run:
+            record_analysis_run(store, fail_analysis_run(run, e))
         print(f"❌ 错误: {e}")
         
     except RuntimeError as e:
+        if run:
+            record_analysis_run(store, fail_analysis_run(run, e))
         print(f"❌ 运行时错误: {e}")
         
     except Exception as e:
+        if run:
+            record_analysis_run(store, fail_analysis_run(run, e))
         import traceback
         traceback.print_exc()
         print(f"❌ 未知错误: {e}")

@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from xcrawler.clients import x_api
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
+from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime as _parse_twitter_datetime
 
 load_dotenv()
@@ -35,9 +36,9 @@ REQUEST_INTERVAL = 3
 def parse_args():
     parser = argparse.ArgumentParser(description="智能增量抓取：双向同步（新推文 + 历史补全）")
     parser.add_argument("-u", "--user", help="目标用户名")
-    parser.add_argument("--pages", type=int, help=f"最大抓取页数（默认 {MAX_PAGES}）")
+    parser.add_argument("--pages", type=cli_validation.positive_int, help=f"最大抓取页数（默认 {MAX_PAGES}）")
     parser.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
-    parser.add_argument("--interval", type=int, help=f"请求间隔秒数（默认 {REQUEST_INTERVAL}）")
+    parser.add_argument("--interval", type=cli_validation.non_negative_int, help=f"请求间隔秒数（默认 {REQUEST_INTERVAL}）")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     return parser.parse_args()
 
@@ -159,14 +160,14 @@ def main():
     args = parse_args()
     if args.user:
         TARGET_USERNAME = args.user
-    if args.pages:
+    if args.pages is not None:
         MAX_PAGES = args.pages
     if args.target_date:
         try:
             TARGET_DATE = datetime.strptime(args.target_date, "%Y-%m-%d")
         except ValueError:
             print(f"⚠️ --target-date 格式错误: {args.target_date}，使用默认值")
-    if args.interval:
+    if args.interval is not None:
         REQUEST_INTERVAL = args.interval
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
@@ -180,6 +181,11 @@ def main():
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 每日最大抓取页数: {MAX_PAGES}")
     print("=" * 60 + "\n")
+    print("📋 执行计划:")
+    print(f"   预计最多请求: {MAX_PAGES} 页 / {MAX_PAGES * 100} 条")
+    print(f"   请求间隔: {REQUEST_INTERVAL} 秒")
+    print(f"   历史目标日期: {TARGET_DATE.strftime('%Y-%m-%d')}")
+    print()
     
     # 1. 加载现有数据
     raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")

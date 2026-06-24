@@ -92,9 +92,16 @@ class AnalysisRun:
     model: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    status: Literal["running", "success", "failed", "partial"] = "running"
     params: dict[str, Any] = field(default_factory=dict)
     input_range: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
+    duration_ms: int | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    llm_calls: int = 0
+    total_tokens: int | None = None
+    failed_batches: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
