@@ -23,12 +23,17 @@ BASE_URL = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https
 MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取目标用户名
 
-if not API_KEY:
-    raise RuntimeError("未检测到 API Key，请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
-
-
-provider = DeepSeekProvider(api_key=API_KEY, base_url=BASE_URL)
+provider: DeepSeekProvider | None = None
 LAST_LLM_RESPONSE: LLMResponse | None = None
+
+
+def _get_provider() -> DeepSeekProvider:
+    global provider
+    if not API_KEY:
+        raise RuntimeError("未检测到 API Key，请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
+    if provider is None:
+        provider = DeepSeekProvider(api_key=API_KEY, base_url=BASE_URL)
+    return provider
 
 
 def _ensure_interest_evidence_fields(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,7 +139,7 @@ def analyze_user_interest(
     prompt = PROMPT_TEMPLATE.format(user_text=joined_text)
 
     global LAST_LLM_RESPONSE
-    response = provider.chat(
+    response = _get_provider().chat(
         [
             {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。请务必输出合法的 JSON 格式。"},
             {"role": "user", "content": prompt}
@@ -298,7 +303,7 @@ if __name__ == "__main__":
                 "analyzed_texts": len(texts),
                 "strategy": "single_prompt_with_limit",
             },
-            config={"provider": provider.name},
+            config={"provider": "deepseek"},
         )
         
         result = analyze_user_interest(texts, temperature=args.temperature)

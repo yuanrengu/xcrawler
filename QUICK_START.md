@@ -23,6 +23,9 @@ X_BEARER_TOKEN=你的Twitter_Bearer_Token
 
 # DeepSeek API Key (必须 - 用于翻译和分析)
 DEEPSEEK_API_KEY=你的DeepSeek_API_Key
+
+# 目标用户名（不带 @）
+TARGET_USERNAME=MiracleHe
 ```
 
 **快速获取:**
@@ -120,18 +123,19 @@ pip3 list | grep -E "(openai|requests|transformers)"
 
 ### 修改抓取数量
 
-```python
-# main.py
-MAX_PAGES = 5  # 5页 = 500条推文（推荐：5-10页）
+```bash
+# 5 页 = 最多 500 条推文，推荐先用 3-10 页测试
+xcrawler fetch --pages 5
 ```
 
-### 修改聚类数量
+### 控制分析规模
 
-```python
-# main.py 或 analyze_only.py
-cluster_num = max(2, min(8, len(translated) // 10))
-# 改为固定值：
-cluster_num = 5  # 固定5个主题
+```bash
+# 限制聚类/画像最多处理的翻译推文数，避免大数据集过慢
+xcrawler fetch --analysis-limit 500
+
+# 限制专业兴趣画像最多输入的翻译文本数
+xcrawler analyze interest --limit 300
 ```
 
 ### 修改时区
@@ -166,12 +170,15 @@ xcrawler fetch  # 自动使用缓存，跳过已翻译内容
 
 ### 减少 API 调用
 
-```python
-# main.py
-MAX_PAGES = 3  # 减少抓取页数
+```bash
+# 减少抓取页数
+xcrawler fetch --pages 3
 
-# analyze_behavior.py
-translated_data[:50]  # 只分析前50条推文（默认200条）
+# 使用增量抓取，避免每天全量重新抓
+xcrawler fetch-more --pages 3
+
+# 使用输入上限控制后续分析成本
+xcrawler analyze interest --limit 100
 ```
 
 ## 🆘 常见问题
@@ -189,12 +196,29 @@ pip3 install -r requirements.txt
 
 ### Q2: API 调用失败
 ```bash
-# 检查 API Key
-cat .env | grep API_KEY
+# 检查 API Key 是否已配置（不会打印密钥内容）
+python3 - <<'PY'
+from dotenv import load_dotenv
+import os
+load_dotenv()
+for key in ("X_BEARER_TOKEN", "DEEPSEEK_API_KEY"):
+    print(f"{key}: {'已配置' if os.getenv(key) else '未配置'}")
+PY
 
-# 测试连接
-curl -H "Authorization: Bearer $(grep DEEPSEEK_API_KEY .env | cut -d= -f2)" \
-     https://api.deepseek.com/v1/models
+# 测试 DeepSeek 连接
+python3 - <<'PY'
+from dotenv import load_dotenv
+import os
+import requests
+load_dotenv()
+key = os.getenv("DEEPSEEK_API_KEY")
+resp = requests.get(
+    "https://api.deepseek.com/v1/models",
+    headers={"Authorization": f"Bearer {key}"},
+    timeout=10,
+)
+print(resp.status_code)
+PY
 ```
 
 ### Q3: 找不到数据文件
@@ -207,12 +231,15 @@ ls -lh cache/
 ```
 
 ### Q4: 内存不足
-```python
-# 减少向量模型精度
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")  # 更轻量
+```bash
+# 减少抓取页数
+xcrawler fetch --pages 3
 
-# 或减少数据量
-MAX_PAGES = 3
+# 限制聚类/画像输入规模
+xcrawler fetch --analysis-limit 300
+
+# 专业兴趣分析也可以限制输入文本数
+xcrawler analyze interest --limit 100
 ```
 
 ## 📚 下一步

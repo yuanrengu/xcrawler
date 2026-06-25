@@ -68,6 +68,16 @@ def batch_sentiment(texts: list[str], llm, model: str) -> tuple[list[str], dict[
     return results, stats
 
 
+def create_provider():
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("未检测到 DEEPSEEK_API_KEY，无法执行情感分析")
+    return DeepSeekProvider(
+        api_key=api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    )
+
+
 def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, tz_offset):
     """生成情感时间趋势图"""
     import matplotlib
@@ -171,10 +181,7 @@ def main():
         return
 
     # 初始化 LLM
-    provider = DeepSeekProvider(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-    )
+    provider = create_provider()
     model = os.getenv("LLM_MODEL", "deepseek-chat")
     store = JsonStore(CACHE_DIR)
     run = create_analysis_run(
