@@ -103,7 +103,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试
-│   └── test_all.py                      # 84 个测试用例（pytest）
+│   └── test_all.py                      # 94 个测试用例（pytest）
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -917,7 +917,7 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 93 个单元测试，使用 pytest 运行：
+项目包含 94 个单元测试，使用 pytest 运行：
 
 ```bash
 # 安装测试依赖（推荐）

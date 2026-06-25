@@ -31,8 +31,10 @@ if AI_AVAILABLE:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
-    llm_provider = DeepSeekProvider(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    llm_provider = None
 else:
+    DEEPSEEK_API_KEY = None
+    DEEPSEEK_BASE_URL = "https://api.deepseek.com"
     LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
     llm_provider = None
 
@@ -43,6 +45,17 @@ def _record_llm_tokens(total_tokens):
     LLM_METRICS["calls"] += 1
     if total_tokens is not None:
         LLM_METRICS["total_tokens"] += total_tokens
+
+
+def _get_llm_provider():
+    global llm_provider
+    if not AI_AVAILABLE:
+        return None
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError("未检测到 DEEPSEEK_API_KEY，无法执行 AI 行为分析")
+    if llm_provider is None:
+        llm_provider = DeepSeekProvider(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    return llm_provider
 
 def analyze_time_patterns(raw_tweets):
     """分析发推时间模式"""
@@ -164,7 +177,7 @@ def detect_life_events(translated_data):
 """
     
     try:
-        r = llm_provider.chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0)
+        r = _get_llm_provider().chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0)
         _record_llm_tokens(r.total_tokens)
         result = r.content
         
@@ -234,7 +247,7 @@ def generate_behavior_summary(time_analysis, life_events):
 """
     
     try:
-        r = llm_provider.chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0.3)
+        r = _get_llm_provider().chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0.3)
         _record_llm_tokens(r.total_tokens)
         return r.content
     except Exception as e:
@@ -293,7 +306,7 @@ def main():
             "life_event_sample_records": min(200, len(translated_data)),
             "life_event_sampling_strategy": "first_200_translated_records",
         },
-        config={"provider": llm_provider.name if llm_provider else None},
+        config={"provider": "deepseek" if AI_AVAILABLE else None},
     )
     
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")

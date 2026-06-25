@@ -475,6 +475,21 @@ class TestTranslateSyncImport:
         assert callable(main._get_ds_client)
 
 
+class TestAnalysisImports:
+    """测试分析脚本导入不会过早初始化外部服务"""
+
+    def test_analyze_pro_provider_is_lazy(self):
+        import analyze_pro
+
+        original_provider = analyze_pro.provider
+        try:
+            analyze_pro.provider = None
+            assert analyze_pro.provider is None
+            assert callable(analyze_pro._get_provider)
+        finally:
+            analyze_pro.provider = original_provider
+
+
 class TestExportCsvHelpers:
     """测试 CSV 导出辅助逻辑"""
 
