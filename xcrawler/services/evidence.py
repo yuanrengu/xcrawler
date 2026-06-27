@@ -44,6 +44,24 @@ def validate_interest_evidence(result: dict[str, Any], translated_data: list[dic
     return result
 
 
+def validate_life_event_evidence(life_events: dict[str, list[Any]], translated_data: list[dict[str, Any]] | None) -> dict[str, list[dict[str, Any]]]:
+    evidence_map = build_evidence_map(translated_data)
+    validated: dict[str, list[dict[str, Any]]] = {}
+
+    for category, events in (life_events or {}).items():
+        validated_events = []
+        for event in events or []:
+            event_dict = dict(event) if isinstance(event, dict) else {"description": str(event)}
+            valid_ids = validate_evidence_tweet_ids(event_dict.get("evidence_tweet_ids"), evidence_map)
+            event_dict["evidence_tweet_ids"] = valid_ids
+            if not valid_ids:
+                event_dict["evidence_status"] = "missing"
+            validated_events.append(event_dict)
+        validated[category] = validated_events
+
+    return validated
+
+
 def evidence_items(tweet_ids: list[str], evidence_map: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     return [evidence_map[tweet_id] for tweet_id in tweet_ids if tweet_id in evidence_map]
 

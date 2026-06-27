@@ -88,6 +88,12 @@ class TestParseBatchResponse:
         result = _parse_batch_response(resp, 2)
         assert result == ["你好", "世界"]
 
+    def test_numbered_response_with_extra_text_is_invalid(self):
+        from main import _parse_batch_response
+
+        resp = "以下是翻译：\n[1] 你好\n[2] 世界"
+        assert _parse_batch_response(resp, 2) == []
+
 
 class TestDetectLanguage:
     """测试 detect_language 语言检测"""
@@ -246,6 +252,35 @@ class TestDeepseekTranslateBatch:
                 fallback_translate=lambda text, lang, use_cache: None,
             )
 
+    def test_malformed_batch_response_falls_back_without_caching_bad_lines(self):
+        from xcrawler.services.translation import translate_batch
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "以下是翻译：\n[1] 你好\n[2] 世界"
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_response
+        cache = {}
+        fallback = MagicMock(side_effect=lambda text, lang, use_cache: f"fallback:{text}")
+        metrics = {}
+
+        result = translate_batch(
+            ["hello", "world"],
+            detected_langs=["en", "en"],
+            use_cache=True,
+            cache=cache,
+            client_factory=lambda: client,
+            model="m",
+            batch_size=2,
+            max_retries=1,
+            fallback_translate=fallback,
+            metrics=metrics,
+        )
+
+        assert result == ["fallback:hello", "fallback:world"]
+        assert cache == {}
+        assert metrics["failed_batches"] == 1
+
 
 class TestClusterCalculation:
     """测试聚类数动态计算逻辑"""
@@ -298,6 +333,42 @@ class TestParseTwitterDatetime:
         from fetch_more_history import parse_twitter_datetime
         with pytest.raises(ValueError):
             parse_twitter_datetime("not-a-date")
+
+
+class TestFetchMoreHistory:
+    """测试增量历史抓取边界"""
+
+    @patch("fetch_more_history.requests.get")
+    def test_stop_date_filters_within_page(self, mock_get):
+        import fetch_more_history
+
+        old_interval = fetch_more_history.REQUEST_INTERVAL
+        fetch_more_history.REQUEST_INTERVAL = 0
+        try:
+            response = MagicMock()
+            response.status_code = 200
+            response.headers = {}
+            response.raise_for_status = MagicMock()
+            response.json.return_value = {
+                "data": [
+                    {"id": "2", "text": "newer", "created_at": "2024-01-02T00:00:00Z"},
+                    {"id": "1", "text": "older", "created_at": "2023-12-31T23:59:59Z"},
+                ],
+                "meta": {},
+            }
+            mock_get.return_value = response
+
+            tweets, reached, pages = fetch_more_history.fetch_tweets_generic(
+                "user-id",
+                stop_date=datetime(2024, 1, 1),
+                max_pages_limit=1,
+            )
+
+            assert reached is True
+            assert pages == 1
+            assert [tweet["id"] for tweet in tweets] == ["2"]
+        finally:
+            fetch_more_history.REQUEST_INTERVAL = old_interval
 
 
 # ==============================
@@ -736,6 +807,37 @@ class TestEvidenceService:
         assert "敏感原文已隐藏" in html
         assert "13800138000" not in html
 
+    def test_validate_life_event_evidence_filters_missing_ids(self):
+        from xcrawler.services.evidence import validate_life_event_evidence
+
+        life_events = {
+            "other_events": [{
+                "description": "参加演出",
+                "evidence_tweet_ids": ["known", "missing"],
+            }]
+        }
+        translated = [{
+            "tweet_id": "known",
+            "original": "show",
+            "translated": "演出",
+            "detected_language": "en",
+            "created_at": "2024-01-01",
+        }]
+
+        validated = validate_life_event_evidence(life_events, translated)
+        assert validated["other_events"][0]["evidence_tweet_ids"] == ["known"]
+
+    def test_validate_life_event_evidence_marks_missing(self):
+        from xcrawler.services.evidence import validate_life_event_evidence
+
+        validated = validate_life_event_evidence(
+            {"other_events": [{"description": "参加演出", "evidence_tweet_ids": ["missing"]}]},
+            [],
+        )
+
+        assert validated["other_events"][0]["evidence_tweet_ids"] == []
+        assert validated["other_events"][0]["evidence_status"] == "missing"
+
 
 class TestPrivacyGuard:
     """测试隐私保护层"""
@@ -767,6 +869,78 @@ class TestPrivacyGuard:
         assert sanitized["health_events"][0]["description"] == "[敏感生活事件已隐藏]"
         assert sanitized["health_events"][0]["evidence_tweet_ids"] == []
         assert sanitized["health_events"][0]["redacted"] is True
+
+
+class TestHtmlReportEscaping:
+    """测试 HTML 报告不会直接拼接不可信文本"""
+
+    def test_evidence_sections_escape_profile_and_event_text(self):
+        from visualize import generate_evidence_sections
+
+        html = generate_evidence_sections({
+            "profile": {
+                "interests": [{
+                    "tag": "<script>alert(1)</script>",
+                    "level": "core",
+                    "confidence": "0.9",
+                    "evidence_tweet_ids": [],
+                }]
+            },
+            "behavior": {
+                "life_events": {
+                    "other_events": [{
+                        "description": "<img src=x onerror=alert(1)>",
+                        "evidence_tweet_ids": [],
+                    }]
+                }
+            },
+            "translated": [],
+        })
+
+        assert "<script>alert(1)</script>" not in html
+        assert "<img src=x onerror=alert(1)>" not in html
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+        assert "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
+class TestEmbeddingCache:
+    """测试 embedding 缓存避免重复编码"""
+
+    def test_encode_texts_with_cache_reuses_cached_vectors(self, tmp_path):
+        from xcrawler.services.embeddings import encode_texts_with_cache
+
+        calls = []
+
+        def encoder(texts):
+            calls.append(list(texts))
+            return [[float(len(text))] for text in texts]
+
+        cache_path = str(tmp_path / "embeddings.json")
+        first = encode_texts_with_cache(["hello", "world"], model_name="m", cache_path=cache_path, encoder=encoder)
+        second = encode_texts_with_cache(["hello", "world"], model_name="m", cache_path=cache_path, encoder=encoder)
+
+        assert first == [[5.0], [5.0]]
+        assert second == first
+        assert calls == [["hello", "world"]]
+
+    def test_encode_texts_with_cache_deduplicates_missing_texts(self, tmp_path):
+        from xcrawler.services.embeddings import encode_texts_with_cache
+
+        calls = []
+
+        def encoder(texts):
+            calls.append(list(texts))
+            return [[float(len(text))] for text in texts]
+
+        vectors = encode_texts_with_cache(
+            ["same", "same"],
+            model_name="m",
+            cache_path=str(tmp_path / "embeddings.json"),
+            encoder=encoder,
+        )
+
+        assert vectors == [[4.0], [4.0]]
+        assert calls == [["same"]]
 
 
 class TestCli:

@@ -4,6 +4,7 @@ import argparse
 from sklearn.cluster import KMeans
 from datetime import datetime
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import normalize_translated_tweets
 
 # 禁用 tokenizers 并行警告
@@ -64,9 +65,15 @@ def main():
     # Lazy import 向量模型
     from sentence_transformers import SentenceTransformer
     print("🔄 加载向量模型...")
-    embed_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+    embedding_model_name = "paraphrase-multilingual-MiniLM-L12-v2"
+    embed_model = SentenceTransformer(embedding_model_name)
     
-    vectors = embed_model.encode(translated)
+    vectors = encode_texts_with_cache(
+        translated,
+        model_name=embedding_model_name,
+        cache_path=os.path.join(CACHE_DIR, "embeddings_cache.json"),
+        encoder=embed_model.encode,
+    )
     labels = KMeans(n_clusters=cluster_num, random_state=42).fit_predict(vectors)
     
     clusters = {}

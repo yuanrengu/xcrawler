@@ -5,6 +5,7 @@
 import os
 import json
 import argparse
+import html
 from datetime import datetime
 from collections import Counter
 
@@ -231,10 +232,10 @@ def generate_evidence_sections(data, include_sensitive_events=False):
     if interests:
         rows = []
         for interest in interests:
-            tag = interest.get("tag", "")
-            level = interest.get("level", "")
-            confidence = interest.get("confidence", "")
-            status = interest.get("evidence_status", "ok")
+            tag = html.escape(str(interest.get("tag", "")))
+            level = html.escape(str(interest.get("level", "")))
+            confidence = html.escape(str(interest.get("confidence", "")))
+            status = html.escape(str(interest.get("evidence_status", "ok")))
             ids = interest.get("evidence_tweet_ids", [])
             rows.append(
                 f'<section class="evidence-item">'
@@ -251,18 +252,19 @@ def generate_evidence_sections(data, include_sensitive_events=False):
         for category, events in life_events.items():
             for event in events or []:
                 if isinstance(event, dict):
-                    description = event.get("description", "")
+                    description = html.escape(str(event.get("description", "")))
                     ids = event.get("evidence_tweet_ids", [])
                     sensitive = bool(event.get("sensitive"))
                 else:
-                    description = str(event)
+                    description = html.escape(str(event))
                     ids = []
                     sensitive = False
+                safe_category = html.escape(str(category))
                 redact = sensitive and not include_sensitive_events
                 note = '<p class="empty">敏感事件证据默认隐藏；使用 --include-sensitive-events 可显示。</p>' if redact else ""
                 rows.append(
                     f'<section class="evidence-item">'
-                    f'<h3>{category}: {description}</h3>'
+                    f'<h3>{safe_category}: {description}</h3>'
                     f'{note}{render_evidence_html(ids, evidence_map, redact=redact)}'
                     f'</section>'
                 )
@@ -274,18 +276,21 @@ def generate_evidence_sections(data, include_sensitive_events=False):
 
 def generate_html_report(username, chart_paths, output_dir, data=None, include_sensitive_events=False):
     """生成 HTML 报告"""
+    safe_username = html.escape(str(username))
     charts_html = ""
     for name, path in chart_paths:
         if path and os.path.exists(path):
             rel_path = os.path.basename(path)
-            charts_html += f'<div class="chart"><h3>{name}</h3><img src="{rel_path}" alt="{name}"></div>\n'
+            safe_name = html.escape(str(name))
+            safe_rel_path = html.escape(rel_path, quote=True)
+            charts_html += f'<div class="chart"><h3>{safe_name}</h3><img src="{safe_rel_path}" alt="{safe_name}"></div>\n'
     evidence_html = generate_evidence_sections(data or {}, include_sensitive_events=include_sensitive_events)
 
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>@{username} Twitter Analysis Report</title>
+<title>@{safe_username} Twitter Analysis Report</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
   h1 {{ color: #1976D2; border-bottom: 2px solid #1976D2; padding-bottom: 10px; }}
@@ -299,7 +304,7 @@ def generate_html_report(username, chart_paths, output_dir, data=None, include_s
 </style>
 </head>
 <body>
-<h1>📊 @{username} Twitter Analysis Report</h1>
+<h1>📊 @{safe_username} Twitter Analysis Report</h1>
 <p class="meta">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
 {charts_html}
 {evidence_html}
