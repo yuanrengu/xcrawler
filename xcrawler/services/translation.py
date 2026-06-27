@@ -21,21 +21,35 @@ def _record_usage(metrics: dict[str, int] | None, response: object) -> None:
 
 
 def parse_batch_response(response: str, expected_count: int) -> list[str]:
-    lines = response.strip().split("\n")
-    results = []
+    lines = [line.strip() for line in response.strip().split("\n") if line.strip()]
+    if not lines:
+        return []
 
+    numbered: dict[int, str] = {}
+    saw_numbered_line = False
+    unnumbered_lines = 0
     for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        match = re.match(r"^\[?\d+\]?\s*[\.\):：]?\s*(.+)", line)
+        match = re.match(r"^(?:\[(\d+)\]|(\d+)[\.\):：])\s*[\.\):：]?\s*(.+)", line)
         if match:
-            results.append(match.group(1).strip())
+            saw_numbered_line = True
+            idx = int(match.group(1) or match.group(2))
+            text = match.group(3).strip()
+            if idx < 1 or idx > expected_count or idx in numbered or not text:
+                return []
+            numbered[idx] = text
+        else:
+            unnumbered_lines += 1
 
-    if len(results) != expected_count:
-        results = [line.strip() for line in lines if line.strip()]
+    if saw_numbered_line:
+        if unnumbered_lines:
+            return []
+        if set(numbered) != set(range(1, expected_count + 1)):
+            return []
+        return [numbered[i] for i in range(1, expected_count + 1)]
 
-    return results
+    if len(lines) == expected_count:
+        return lines
+    return []
 
 
 def translate_text(
@@ -190,13 +204,16 @@ def translate_batch(
                 _record_usage(metrics, response)
                 response_text = response.choices[0].message.content.strip()
                 parsed = parse_batch_response(response_text, current_batch_size)
+                if len(parsed) != current_batch_size:
+                    raise ValueError(
+                        f"批量翻译响应数量不匹配，期望 {current_batch_size} 条，实际解析 {len(parsed)} 条"
+                    )
 
                 for j, idx in enumerate(batch_indices):
-                    if j < len(parsed) and parsed[j]:
-                        results[idx] = parsed[j]
-                        if use_cache:
-                            cache[texts[idx]] = parsed[j]
-                        translated_count += 1
+                    results[idx] = parsed[j]
+                    if use_cache:
+                        cache[texts[idx]] = parsed[j]
+                    translated_count += 1
                 print(f" ✅ 已翻译 {translated_count}/{len(to_translate_texts)} 条")
                 break
             except Exception as e:

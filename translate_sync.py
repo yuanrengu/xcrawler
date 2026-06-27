@@ -40,6 +40,8 @@ def load_data(username):
 import argparse
 
 def main():
+    global TARGET_USERNAME, CACHE_DIR
+
     parser = argparse.ArgumentParser(description="翻译同步/重翻工具")
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
@@ -47,10 +49,8 @@ def main():
     args = parser.parse_args()
 
     if args.user:
-        global TARGET_USERNAME
         TARGET_USERNAME = args.user
     if args.cache_dir:
-        global CACHE_DIR
         import main as main_module
         CACHE_DIR = args.cache_dir
         main_module.CACHE_DIR = args.cache_dir

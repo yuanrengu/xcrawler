@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
+from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
 
@@ -330,6 +331,7 @@ def main():
             life_events = detect_life_events(translated_data)
             if life_events:
                 life_events = _normalize_life_events(life_events)
+                life_events = validate_life_event_evidence(life_events, translated_data)
                 life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
                 print("✅ 事件检测完成\n")
             else:

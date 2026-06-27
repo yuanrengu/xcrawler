@@ -116,17 +116,27 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
             if not page_tweets:
                 print(f"📭 第 {page + 1} 页无数据 (本批次结束)")
                 break
-            
-            all_tweets.extend(page_tweets)
+
+            kept_tweets = page_tweets
+            if stop_date:
+                kept_tweets = []
+                for tweet in page_tweets:
+                    tweet_dt = parse_twitter_datetime(tweet["created_at"])
+                    if tweet_dt >= stop_date:
+                        kept_tweets.append(tweet)
+                    else:
+                        reached_target = True
+
+            all_tweets.extend(kept_tweets)
             pages_fetched += 1
             
             # 获取本页最早时间
             oldest_in_page = parse_twitter_datetime(page_tweets[-1]["created_at"])
-            print(f"📄 第 {page + 1} 页: {len(page_tweets)}条 | 最早: {oldest_in_page.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
+            kept_note = f"，保留 {len(kept_tweets)} 条" if stop_date and len(kept_tweets) != len(page_tweets) else ""
+            print(f"📄 第 {page + 1} 页: {len(page_tweets)}条{kept_note} | 最早: {oldest_in_page.strftime('%Y-%m-%d')} | 累计: {len(all_tweets)}条")
             
             # 仅在向历史抓取时检查日期停止条件
-            if stop_date and oldest_in_page <= stop_date:
-                reached_target = True
+            if reached_target:
                 print(f"✅ 已到达目标日期 {stop_date.strftime('%Y-%m-%d')}！")
                 break
             

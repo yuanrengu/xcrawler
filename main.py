@@ -14,6 +14,7 @@ from xcrawler.clients import x_api
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir, translation_cache_path
+from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import make_translated_tweet
 from xcrawler.services.translation import (
     parse_batch_response,
@@ -386,8 +387,14 @@ def main():
         # Lazy import
         from sentence_transformers import SentenceTransformer
         from sklearn.cluster import KMeans
-        embed_model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
-        vectors = embed_model.encode(analysis_texts)
+        embedding_model_name = "paraphrase-multilingual-MiniLM-L12-v2"
+        embed_model = SentenceTransformer(embedding_model_name)
+        vectors = encode_texts_with_cache(
+            analysis_texts,
+            model_name=embedding_model_name,
+            cache_path=os.path.join(CACHE_DIR, "embeddings_cache.json"),
+            encoder=embed_model.encode,
+        )
         labels = KMeans(n_clusters=cluster_num, random_state=42).fit_predict(vectors)
 
         clusters = {}
