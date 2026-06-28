@@ -7,6 +7,7 @@ from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore
 
 # 尝试导入可选依赖
@@ -137,7 +138,7 @@ def detect_life_events(translated_data):
     # 准备推文文本
     tweets_text = "\n\n".join([
         f"[tweet_id={item.get('tweet_id') or 'unknown'}][{item.get('created_at', 'unknown')}] {item['translated']}"
-        for item in translated_data[:200]  # 分析前200条
+        for item in sample_evenly(translated_data, 200)
     ])
     
     prompt = f"""
@@ -305,7 +306,7 @@ def main():
             "raw_tweets": len(raw_tweets),
             "translated_records": len(translated_data),
             "life_event_sample_records": min(200, len(translated_data)),
-            "life_event_sampling_strategy": "first_200_translated_records",
+            "life_event_sampling_strategy": "evenly_sampled_translated_records",
         },
         config={"provider": "deepseek" if AI_AVAILABLE else None},
     )
@@ -316,7 +317,7 @@ def main():
         failed_steps = 0
         print("📋 执行计划:")
         print(f"   时间分析输入: {len(raw_tweets)} 条原始推文")
-        print(f"   生活事件检测输入: 前 {min(200, len(translated_data))} 条翻译记录")
+        print(f"   生活事件检测输入: 按时间跨度均匀抽样 {min(200, len(translated_data))} 条翻译记录")
         print(f"   LLM 调用: {'最多 2 次（事件检测 + 行为总结）' if AI_AVAILABLE else '0 次'}")
         print()
 
@@ -370,7 +371,7 @@ def main():
         },
         "sampling": {
             "life_event_sample_records": min(200, len(translated_data)),
-            "life_event_sampling_strategy": "first_200_translated_records",
+            "life_event_sampling_strategy": "evenly_sampled_translated_records",
         },
         "failed_steps": failed_steps,
         "behavior_summary": behavior_summary

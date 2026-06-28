@@ -16,6 +16,7 @@ from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import make_translated_tweet
+from xcrawler.services.sampling import sample_evenly
 from xcrawler.services.translation import (
     parse_batch_response,
     translate_batch,
@@ -375,9 +376,9 @@ def main():
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")
             return
 
-        analysis_texts = translated[:ANALYSIS_LIMIT]
+        analysis_texts = sample_evenly(translated, ANALYSIS_LIMIT)
         if len(translated) > len(analysis_texts):
-            print(f"⚠️ 长输入保护：已保存全部 {len(translated)} 条翻译，但聚类/画像仅分析前 {len(analysis_texts)} 条")
+            print(f"⚠️ 长输入保护：已保存全部 {len(translated)} 条翻译，聚类/画像按时间跨度均匀抽样分析 {len(analysis_texts)} 条")
 
         # 4. 动态聚类
         # 动态确定聚类数量：每10条推文1个主题，最少2个，最多8个

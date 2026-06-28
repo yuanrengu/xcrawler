@@ -545,6 +545,46 @@ class TestTranslateSyncImport:
         assert main.ds_client is None  # 尚未初始化
         assert callable(main._get_ds_client)
 
+    def test_sync_adds_duplicate_text_when_tweet_id_is_new(self, tmp_path):
+        import sys
+        import translate_sync
+
+        username = "alice"
+        raw_file = tmp_path / f"{username}_raw_tweets.json"
+        translated_file = tmp_path / f"{username}_translated.json"
+        raw_file.write_text(json.dumps([
+            {"id": "1", "text": "Same text", "created_at": "2024-01-02T00:00:00Z"},
+            {"id": "2", "text": "Same text", "created_at": "2024-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+        translated_file.write_text(json.dumps([
+            {
+                "tweet_id": "1",
+                "original": "Same text",
+                "translated": "同样的文本",
+                "detected_language": "en",
+                "created_at": "2024-01-02T00:00:00Z",
+            }
+        ]), encoding="utf-8")
+
+        old_argv = sys.argv[:]
+        old_cache_dir = translate_sync.CACHE_DIR
+        old_username = translate_sync.TARGET_USERNAME
+        try:
+            sys.argv = ["translate_sync.py", "--user", username, "--cache-dir", str(tmp_path)]
+            with patch("translate_sync.deepseek_translate_batch", return_value=["同样的文本"]) as mock_batch, \
+                 patch("translate_sync.detect_language", return_value="en"), \
+                 patch("translate_sync.load_translation_cache", return_value={"Same text": "同样的文本"}), \
+                 patch("translate_sync.save_translation_cache"):
+                translate_sync.main()
+
+            data = json.loads(translated_file.read_text(encoding="utf-8"))
+            assert {item["tweet_id"] for item in data} == {"1", "2"}
+            mock_batch.assert_called_once_with(["Same text"], ["en"], use_cache=True)
+        finally:
+            sys.argv = old_argv
+            translate_sync.CACHE_DIR = old_cache_dir
+            translate_sync.TARGET_USERNAME = old_username
+
 
 class TestAnalysisImports:
     """测试分析脚本导入不会过早初始化外部服务"""
@@ -559,6 +599,11 @@ class TestAnalysisImports:
             assert callable(analyze_pro._get_provider)
         finally:
             analyze_pro.provider = original_provider
+
+    def test_analyze_pro_exposes_main_for_unified_cli(self):
+        import analyze_pro
+
+        assert callable(analyze_pro.main)
 
 
 class TestExportCsvHelpers:
@@ -943,6 +988,20 @@ class TestEmbeddingCache:
         assert calls == [["same"]]
 
 
+class TestSampling:
+    """测试长输入均匀抽样"""
+
+    def test_sample_evenly_spans_input(self):
+        from xcrawler.services.sampling import sample_evenly
+
+        assert sample_evenly(list(range(10)), 4) == [0, 3, 6, 9]
+
+    def test_sample_evenly_keeps_short_input(self):
+        from xcrawler.services.sampling import sample_evenly
+
+        assert sample_evenly(["a", "b"], 5) == ["a", "b"]
+
+
 class TestCli:
     """测试统一 CLI"""
 
@@ -1010,6 +1069,15 @@ class TestCli:
             cli.main(["analyze", "interest", "--limit", "25"])
 
         mock_run.assert_called_once_with("analyze_pro", ["--limit", "25"])
+
+    def test_run_script_invokes_analyze_pro_main(self):
+        from xcrawler import cli
+        import analyze_pro
+
+        with patch.object(analyze_pro, "main", return_value=None) as mock_main:
+            assert cli._run_script("analyze_pro", ["--cache-dir", "missing-cache"]) == 0
+
+        mock_main.assert_called_once_with()
 
     def test_translate_forwards_cache_dir(self):
         from xcrawler import cli
@@ -1116,6 +1184,29 @@ class TestSentimentFailures:
 
         assert sentiments == ["positive", "negative"]
         assert stats["total_tokens"] == 7
+
+    def test_incomplete_batch_response_stays_unknown_and_counts_failure(self):
+        from analyze_sentiment import batch_sentiment
+        from xcrawler.llm.provider import LLMResponse
+
+        client = MagicMock()
+        client.chat.return_value = LLMResponse(
+            content="[1] positive",
+            model="model",
+            provider="test",
+            total_tokens=5,
+        )
+
+        sentiments, stats = batch_sentiment(["great", "bad"], client, "model")
+
+        assert sentiments == ["unknown", "unknown"]
+        assert stats["failed_batches"] == 1
+
+    def test_sentiment_response_rejects_extra_text(self):
+        from analyze_sentiment import parse_sentiment_response
+
+        response = "结果如下：\n[1] positive\n[2] negative"
+        assert parse_sentiment_response(response, 2) == []
 
 
 class TestFetchPlan:
