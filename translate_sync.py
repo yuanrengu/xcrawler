@@ -85,11 +85,16 @@ def main():
     
     to_process = []
     
-    if args.force:
-        # Process ALL raw tweets
-        translated_texts = set() # Empty set so everything is "new"
-    else:
-        translated_texts = set(item["original"] for item in translated_data)
+    translated_tweet_ids = {
+        str(item.get("tweet_id"))
+        for item in translated_data
+        if item.get("tweet_id") is not None
+    }
+    translated_texts_without_id = {
+        item["original"]
+        for item in translated_data
+        if not item.get("tweet_id") and item.get("original")
+    }
     
     for t in raw_tweets:
         text = t.get("text", "")
@@ -98,10 +103,17 @@ def main():
         if len(clean) < 6:
             continue
             
-        if args.force or clean not in translated_texts:
+        tweet_id = t.get("id")
+        already_translated = (
+            str(tweet_id) in translated_tweet_ids
+            if tweet_id is not None
+            else clean in translated_texts_without_id
+        )
+
+        if args.force or not already_translated:
             detected_lang = detect_language(clean)
             to_process.append({
-                "tweet_id": t.get("id"),
+                "tweet_id": tweet_id,
                 "original": clean,
                 "lang": detected_lang,
                 "created_at": t.get("created_at", "")

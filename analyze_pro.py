@@ -9,6 +9,7 @@ from xcrawler.llm.provider import DeepSeekProvider, LLMResponse
 from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore
 from xcrawler.utils import cli_validation
 
@@ -253,7 +254,9 @@ def parse_args():
     parser.add_argument("--cache-dir", help="缓存目录")
     return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
+    global TARGET_USERNAME, MODEL
+
     args = parse_args()
     if args.user:
         TARGET_USERNAME = args.user
@@ -278,10 +281,10 @@ if __name__ == "__main__":
             for item in translated_records
             if item.get("translated")
         ]
-        texts = all_texts[:args.limit]
+        texts = sample_evenly(all_texts, args.limit)
         print(f"✅ 已加载 {len(all_texts)} 条翻译文本")
         if len(all_texts) > len(texts):
-            print(f"⚠️ 长输入保护：仅分析前 {len(texts)} 条文本，可通过 --limit 调整")
+            print(f"⚠️ 长输入保护：按时间跨度均匀抽样分析 {len(texts)} 条文本，可通过 --limit 调整")
         print()
         
         # 2. 执行分析
@@ -301,7 +304,7 @@ if __name__ == "__main__":
                 "translated_records": len(translated_records),
                 "available_texts": len(all_texts),
                 "analyzed_texts": len(texts),
-                "strategy": "single_prompt_with_limit",
+                "strategy": "single_prompt_even_sampling",
             },
             config={"provider": "deepseek"},
         )
@@ -366,3 +369,7 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         print(f"❌ 未知错误: {e}")
+
+
+if __name__ == "__main__":
+    main()

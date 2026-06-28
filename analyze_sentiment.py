@@ -20,6 +20,30 @@ TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 CACHE_DIR = "cache"
 
 
+def parse_sentiment_response(response: str, expected_count: int) -> list[str]:
+    """Parse a fully numbered sentiment response."""
+    import re
+
+    lines = [line.strip() for line in response.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    parsed: dict[int, str] = {}
+    for line in lines:
+        match = re.match(r"^(?:\[(\d+)\]|(\d+)[\.\):：])\s*[\.\):：]?\s*(positive|neutral|negative)\s*$", line, re.I)
+        if not match:
+            return []
+        idx = int(match.group(1) or match.group(2))
+        sentiment = match.group(3).lower()
+        if idx < 1 or idx > expected_count or idx in parsed:
+            return []
+        parsed[idx] = sentiment
+
+    if set(parsed) != set(range(1, expected_count + 1)):
+        return []
+    return [parsed[i] for i in range(1, expected_count + 1)]
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="推文情感分析：批量打分 + 趋势图")
     parser.add_argument("-u", "--user", help="目标用户名")
@@ -31,8 +55,6 @@ def parse_args():
 
 def batch_sentiment(texts: list[str], llm, model: str) -> tuple[list[str], dict[str, int]]:
     """批量情感打分：positive / neutral / negative"""
-    import re
-
     BATCH = 20
     results = ["unknown"] * len(texts)
     stats = {"batches": 0, "failed_batches": 0, "total_tokens": 0}
@@ -53,14 +75,13 @@ def batch_sentiment(texts: list[str], llm, model: str) -> tuple[list[str], dict[
             r = llm.chat([{"role": "user", "content": prompt}], model=model, temperature=0)
             if r.total_tokens is not None:
                 stats["total_tokens"] += r.total_tokens
-            response = r.content
-            for line in response.split("\n"):
-                line = line.strip()
-                m = re.match(r'^\[?(\d+)\]?\s*[\.:：]?\s*(positive|neutral|negative)', line, re.I)
-                if m:
-                    idx = int(m.group(1)) - 1
-                    if 0 <= idx < len(batch):
-                        results[start + idx] = m.group(2).lower()
+            parsed = parse_sentiment_response(r.content, len(batch))
+            if len(parsed) != len(batch):
+                stats["failed_batches"] += 1
+                print("   ⚠️ 批次情感分析响应不完整，标记为 unknown")
+                continue
+            for idx, sentiment in enumerate(parsed):
+                results[start + idx] = sentiment
         except Exception as e:
             stats["failed_batches"] += 1
             print(f"   ⚠️ 批次情感分析失败: {e}")
