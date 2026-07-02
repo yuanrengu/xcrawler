@@ -1,21 +1,49 @@
 # xcrawler
 
-> Evidence-backed X/Twitter public timeline analysis CLI: fetch public posts, translate multilingual content, and generate interest profiles, behavior patterns, sentiment trends, network signals, and HTML reports.
+<p align="center">
+  <img src="assets/note.png" alt="xcrawler report preview" width="800">
+</p>
 
-![xcrawler report preview](assets/note.png)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="#-运行测试"><img src="https://img.shields.io/badge/tests-94%20passed-green.svg" alt="Tests"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
+</p>
 
-`xcrawler` 将公开 X/Twitter 时间线转化为可追溯的用户画像与行为洞察。它适合公开账号研究、创作者分析、品牌观察、内容策略和受众洞察；分析结果尽量保留 `tweet_id` 证据，敏感生活事件默认隐藏。
+**xcrawler** 是一款命令行工具，将公开 X/Twitter 时间线转化为可追溯、有据可查的用户画像与行为洞察。
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -e ".[all]"
+- 🔍 **兴趣画像** — AI 驱动的标签提取，含置信度评分和 `tweet_id` 证据链
+- 🌍 **多语言翻译** — 自动检测 → 翻译 → 缓存，批量处理降低 5-10 倍费用
+- 📊 **多维分析** — 情感趋势、Hashtag/Mention 网络、24h 活跃热力图
+- 🛡️ **隐私默认** — 敏感生活事件及证据默认隐藏，需显式开启
+- 📦 **本地优先** — 所有 JSON、CSV、图表、HTML 报告均存储在本地 `cache/` 目录
+- 🧩 **模块化** — 统一 `xcrawler` CLI，支持可插拔存储和 LLM Provider
 
-cp .env.example .env
-xcrawler fetch --user target_username --pages 3
-xcrawler analyze interest --user target_username
-xcrawler report --user target_username
-```
+适用于公开账号研究、创作者分析、品牌观察、内容策略和受众洞察。
+
+---
+
+## 目录
+
+- [快速开始](#-快速开始)
+- [Why xcrawler?](#why-xcrawler)
+- [功能特性](#-功能特性)
+- [项目结构](#-项目结构)
+- [CLI 命令](#-统一-cli-命令)
+- [配置选项](#-配置选项)
+- [依赖说明](#-依赖说明)
+- [使用场景](#-使用场景)
+- [故障排除](#-故障排除)
+- [运行测试](#-运行测试)
+- [模块化结构](#-模块化结构)
+- [更新日志](#-更新日志)
+- [贡献](#-贡献)
+- [隐私与责任使用](#-privacy--responsible-use)
+- [许可证](#-许可证)
+
+---
+
+> **责任使用提醒：** 仅分析你有权访问的公开内容。请勿将本项目用于骚扰、跟踪、人肉搜索、歧视性画像或违反平台政策的行为。
 
 ## Why xcrawler?
 
