@@ -1,6 +1,31 @@
-# Twitter（X） 用户画像分析工具
+# xcrawler
 
-将公开 Twitter/X 时间线转化为可追溯的用户画像与行为洞察：自动抓取、翻译并分析用户兴趣、情绪趋势、活跃时间、生活事件和社交信号，帮助进行公开账号研究、受众洞察、内容策略、创作者分析、品牌观察和营销投放决策。
+> Evidence-backed X/Twitter public timeline analysis CLI: fetch public posts, translate multilingual content, and generate interest profiles, behavior patterns, sentiment trends, network signals, and HTML reports.
+
+![xcrawler report preview](assets/screenshots/report-preview.svg)
+
+`xcrawler` 将公开 X/Twitter 时间线转化为可追溯的用户画像与行为洞察。它适合公开账号研究、创作者分析、品牌观察、内容策略和受众洞察；分析结果尽量保留 `tweet_id` 证据，敏感生活事件默认隐藏。
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[all]"
+
+cp .env.example .env
+xcrawler fetch --user target_username --pages 3
+xcrawler analyze interest --user target_username
+xcrawler report --user target_username
+```
+
+## Why xcrawler?
+
+- **Evidence-first analysis**: interest tags and life-event signals are validated against real `tweet_id` evidence.
+- **Multilingual workflow**: detects and translates non-Chinese posts before clustering and analysis.
+- **Privacy-aware defaults**: sensitive life-event details and evidence are redacted unless explicitly enabled.
+- **End-to-end reports**: CLI commands cover fetching, translation, interest profiling, behavior analysis, sentiment, hashtag/mention networks, CSV export, and HTML reports.
+- **Local-first storage**: generated JSON, CSV, cache, and reports stay in your local `cache/` directory.
+
+> Responsible use: only analyze public content you are allowed to access. Do not use this project for harassment, stalking, doxxing, discriminatory profiling, or platform-policy violations.
 
 ## 🎯 功能特性
 
