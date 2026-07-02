@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/yuanrengu/xcrawler/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/yuanrengu/xcrawler/test.yml?branch=main&label=tests" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="#-运行测试"><img src="https://img.shields.io/badge/tests-94%20passed-green.svg" alt="Tests"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
 </p>
 
@@ -19,14 +19,24 @@
 - 📦 **本地优先** — 所有 JSON、CSV、图表、HTML 报告均存储在本地 `cache/` 目录
 - 🧩 **模块化** — 统一 `xcrawler` CLI，支持可插拔存储和 LLM Provider
 
+**30 秒上手：**
+
+```bash
+python3 -m pip install -e ".[all]"          # 安装全功能依赖
+xcrawler fetch --user MiracleHe             # 抓取 + 翻译 + 聚类
+xcrawler analyze interest --user MiracleHe  # 专业兴趣画像
+xcrawler report --user MiracleHe            # 生成图表 + HTML 报告
+```
+
 适用于公开账号研究、创作者分析、品牌观察、内容策略和受众洞察。
+
+> **责任使用提醒：** 仅分析你有权访问的公开内容。请勿将本项目用于骚扰、跟踪、人肉搜索、歧视性画像或违反平台政策的行为。
 
 ---
 
 ## 目录
 
 - [快速开始](#-快速开始)
-- [Why xcrawler?](#why-xcrawler)
 - [功能特性](#-功能特性)
 - [项目结构](#-项目结构)
 - [CLI 命令](#-统一-cli-命令)
@@ -43,17 +53,256 @@
 
 ---
 
-> **责任使用提醒：** 仅分析你有权访问的公开内容。请勿将本项目用于骚扰、跟踪、人肉搜索、歧视性画像或违反平台政策的行为。
+## 🚀 快速开始
 
-## Why xcrawler?
+### 1. 环境准备
 
-- **Evidence-first analysis**: interest tags and life-event signals are validated against real `tweet_id` evidence.
-- **Multilingual workflow**: detects and translates non-Chinese posts before clustering and analysis.
-- **Privacy-aware defaults**: sensitive life-event details and evidence are redacted unless explicitly enabled.
-- **End-to-end reports**: CLI commands cover fetching, translation, interest profiling, behavior analysis, sentiment, hashtag/mention networks, CSV export, and HTML reports.
-- **Local-first storage**: generated JSON, CSV, cache, and reports stay in your local `cache/` directory.
+项目要求 Python 3.10 或更高版本。
 
-> Responsible use: only analyze public content you are allowed to access. Do not use this project for harassment, stalking, doxxing, discriminatory profiling, or platform-policy violations.
+```bash
+# 推荐：使用虚拟环境，安装全功能依赖
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[all]"
+
+# 如果只需要基础 CLI / 抓取 / LLM 功能
+python3 -m pip install -e .
+
+# 可选依赖：向量聚类/可视化
+python3 -m pip install -e ".[ml,viz]"
+```
+
+### 2. 配置 API 密钥
+
+从示例文件创建 `.env`，然后填入自己的 API 密钥：
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# Twitter API (用于数据抓取)
+X_BEARER_TOKEN=your_twitter_bearer_token
+
+# DeepSeek API (用于翻译和AI分析)
+DEEPSEEK_API_KEY=your_deepseek_api_key
+
+# 目标用户名（可修改为任意 X 用户名）
+TARGET_USERNAME=MiracleHe
+
+# 增量抓取目标日期（格式：YYYY-MM-DD，抓取到此日期或最早推文为止）
+TARGET_DATE=2024-01-01
+
+# 时区偏移（UTC+N），默认 8（中国）
+TIMEZONE_OFFSET=8
+
+# DeepSeek API 配置 (可选，默认值如下)
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+```
+
+**获取方式：**
+- Twitter API Token: https://developer.twitter.com/
+- DeepSeek API Key: https://platform.deepseek.com/
+
+**多用户分析：**
+- 修改 `.env` 中的 `TARGET_USERNAME` 即可切换用户
+- 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
+
+### 3. 运行分析
+
+#### 🌟 推荐方式：使用统一 CLI
+
+安装完成后可以直接使用 `xcrawler` 命令：
+
+```bash
+# 首次完整流程：抓取 + 翻译 + 聚类
+xcrawler fetch --user MiracleHe
+
+# 专业兴趣画像
+xcrawler analyze interest --user MiracleHe
+
+# 行为分析（默认隐藏敏感生活事件）
+xcrawler analyze behavior --user MiracleHe
+
+# 生成图表和 HTML 报告
+xcrawler report --user MiracleHe
+```
+
+旧脚本入口仍然保留，例如 `python3 main.py`、`python3 analyze_pro.py`，用于兼容已有流程。
+
+#### 方案 A：首次完整分析
+
+```bash
+# Step 1: 抓取数据 + 翻译 + 聚类分析
+xcrawler fetch
+
+# Step 2: 专业兴趣画像分析（推荐）
+xcrawler analyze interest
+
+# Step 3: 行为分析（时间模式 + 生活事件）
+xcrawler analyze behavior
+```
+
+#### 方案 B：增量抓取（推荐 Free API）
+
+```bash
+# 首次抓取
+xcrawler fetch
+
+# 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
+xcrawler fetch-more
+
+# 确保新数据被翻译（关键步骤）
+xcrawler translate
+
+# 或使用便捷脚本（已包含同步逻辑）
+./refetch_data.sh --incremental    # 增量抓取（推荐）
+./refetch_data.sh                  # 全量重新抓取
+
+# 重新分析
+xcrawler analyze interest
+xcrawler analyze behavior
+```
+
+#### 方案 C：仅分析现有数据
+
+```bash
+# 快速分析（不重新抓取）
+python3 analyze_only.py      # 聚类分析
+xcrawler analyze interest    # 专业分析
+xcrawler analyze behavior    # 行为分析
+```
+
+### 4. 统一 CLI 命令
+
+`xcrawler` 支持统一子命令，CLI 参数优先于 `.env` 配置：
+
+```bash
+# 指定用户和抓取页数
+xcrawler fetch -u MiracleHe --pages 10
+
+# 限制后续聚类/画像最多分析的翻译推文数，避免大数据集过慢
+xcrawler fetch -u MiracleHe --pages 10 --analysis-limit 500
+
+# 指定用户和模型
+xcrawler analyze interest -u MiracleHe --model deepseek-chat --limit 300
+
+# 增量抓取指定用户和目标日期
+xcrawler fetch-more -u MiracleHe --target-date 2023-01-01
+
+# 查看帮助
+xcrawler --help
+xcrawler analyze --help
+```
+
+#### 常用子命令
+
+| 命令 | 说明 |
+|------|------|
+| `xcrawler fetch` | 抓取数据、翻译并执行聚类分析 |
+| `xcrawler fetch-more` | 智能增量抓取新推文和历史推文 |
+| `xcrawler translate` | 同步或重翻已有原始推文 |
+| `xcrawler analyze interest` | 专业兴趣画像分析 |
+| `xcrawler analyze behavior` | 时间行为和生活事件分析 |
+| `xcrawler analyze sentiment` | 情感分析 |
+| `xcrawler analyze network` | Hashtag / Mention 网络分析 |
+| `xcrawler report` | 生成图表和 HTML 报告 |
+| `xcrawler export csv` | 导出 CSV |
+
+#### 兼容脚本支持的参数
+
+| 参数 | 说明 | main.py | fetch | analyze_pro | behavior | only |
+|------|------|:-------:|:-----:|:-----------:|:--------:|:----:|
+| `-u/--user` | 目标用户名 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `--pages` | 抓取页数 | ✅ | ✅ | - | - | - |
+| `--model` | LLM 模型名 | ✅ | - | ✅ | - | - |
+| `--batch-size` | 每批翻译条数 | ✅ | - | - | - | - |
+| `--analysis-limit` | 聚类和画像最多分析的翻译推文数 | ✅ | - | - | - | - |
+| `--target-date` | 历史目标日期 | - | ✅ | - | - | - |
+| `--cache-dir` | 缓存目录 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `--temperature` | 模型温度 | - | - | ✅ | - | - |
+| `--limit` | 兴趣画像最多分析的翻译文本数 | - | - | ✅ | - | - |
+| `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
+
+CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。
+
+### 5. 数据可视化
+
+```bash
+# 生成所有图表 + HTML 报告
+xcrawler report
+
+# 指定用户
+xcrawler report -u MiracleHe
+
+# 自定义输出目录
+xcrawler report --output ./my_charts
+
+# 如确需展示敏感生活事件证据，必须显式开启
+xcrawler report --include-sensitive-events
+```
+
+输出文件（默认在 `cache/charts/`）：
+- `{username}_hourly.png` - 24 小时发推热力图
+- `{username}_weekday.png` - 星期分布图
+- `{username}_language.png` - 语言分布饼图
+- `{username}_interests.png` - 兴趣标签图
+- `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
+
+默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
+
+### 6. Hashtag / Mention 网络分析
+
+```bash
+# 分析 hashtag 和 mention
+xcrawler analyze network
+
+# 指定用户，显示 Top 30
+xcrawler analyze network -u MiracleHe --top 30
+```
+
+输出：
+- 终端打印 Top N hashtag/mention 频率
+- `cache/charts/{username}_hashtags.png` - Hashtag 柱状图
+- `cache/charts/{username}_mentions.png` - Mention 柱状图
+- `cache/{username}_network.json` - 完整分析数据
+
+### 7. 情感分析
+
+```bash
+# 对翻译后的推文做情感打分
+xcrawler analyze sentiment
+
+# 指定用户
+xcrawler analyze sentiment -u MiracleHe --top 10
+```
+
+输出：
+- `cache/charts/{username}_sentiment.png` - 情感时间趋势图
+- `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
+- `cache/{username}_sentiment.json` - 情感分析数据
+
+如果某个 LLM 批次调用失败或响应无法解析，对应推文会标记为 `unknown`，不会被误计为 `neutral`。
+
+### 8. CSV 导出
+
+```bash
+# 导出所有数据为 CSV
+xcrawler export csv
+
+# 只导出翻译数据
+xcrawler export csv --type translations
+
+# 指定用户和输出目录
+xcrawler export csv -u MiracleHe --output ./my_data
+```
+
+输出文件（默认在 `cache/csv/`）：
+- `{username}_tweets.csv` - 原始推文（含 hashtag/mention 列）
+- `{username}_translations.csv` - 原文 + 翻译 + 语言
+- `{username}_interests.csv` - 兴趣标签 + 置信度
+
 
 ## 🎯 功能特性
 
@@ -338,256 +587,6 @@ cp cache_backup/*.json cache/
 ```
 
 现在用户可以根据自己的 API 额度和需求选择合适的抓取策略。
-
-## 🚀 快速开始
-
-### 1. 环境准备
-
-项目要求 Python 3.10 或更高版本。
-
-```bash
-# 推荐：使用虚拟环境，安装全功能依赖
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -e ".[all]"
-
-# 如果只需要基础 CLI / 抓取 / LLM 功能
-python3 -m pip install -e .
-
-# 可选依赖：向量聚类/可视化
-python3 -m pip install -e ".[ml,viz]"
-```
-
-### 2. 配置 API 密钥
-
-从示例文件创建 `.env`，然后填入自己的 API 密钥：
-
-```bash
-cp .env.example .env
-```
-
-```bash
-# Twitter API (用于数据抓取)
-X_BEARER_TOKEN=your_twitter_bearer_token
-
-# DeepSeek API (用于翻译和AI分析)
-DEEPSEEK_API_KEY=your_deepseek_api_key
-
-# 目标用户名（可修改为任意 X 用户名）
-TARGET_USERNAME=MiracleHe
-
-# 增量抓取目标日期（格式：YYYY-MM-DD，抓取到此日期或最早推文为止）
-TARGET_DATE=2024-01-01
-
-# 时区偏移（UTC+N），默认 8（中国）
-TIMEZONE_OFFSET=8
-
-# DeepSeek API 配置 (可选，默认值如下)
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-LLM_MODEL=deepseek-chat
-```
-
-**获取方式：**
-- Twitter API Token: https://developer.twitter.com/
-- DeepSeek API Key: https://platform.deepseek.com/
-
-**多用户分析：**
-- 修改 `.env` 中的 `TARGET_USERNAME` 即可切换用户
-- 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
-
-### 3. 运行分析
-
-#### 🌟 推荐方式：使用统一 CLI
-
-安装完成后可以直接使用 `xcrawler` 命令：
-
-```bash
-# 首次完整流程：抓取 + 翻译 + 聚类
-xcrawler fetch --user MiracleHe
-
-# 专业兴趣画像
-xcrawler analyze interest --user MiracleHe
-
-# 行为分析（默认隐藏敏感生活事件）
-xcrawler analyze behavior --user MiracleHe
-
-# 生成图表和 HTML 报告
-xcrawler report --user MiracleHe
-```
-
-旧脚本入口仍然保留，例如 `python3 main.py`、`python3 analyze_pro.py`，用于兼容已有流程。
-
-#### 方案 A：首次完整分析
-
-```bash
-# Step 1: 抓取数据 + 翻译 + 聚类分析
-xcrawler fetch
-
-# Step 2: 专业兴趣画像分析（推荐）
-xcrawler analyze interest
-
-# Step 3: 行为分析（时间模式 + 生活事件）
-xcrawler analyze behavior
-```
-
-#### 方案 B：增量抓取（推荐 Free API）
-
-```bash
-# 首次抓取
-xcrawler fetch
-
-# 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
-xcrawler fetch-more
-
-# 确保新数据被翻译（关键步骤）
-xcrawler translate
-
-# 或使用便捷脚本（已包含同步逻辑）
-./refetch_data.sh --incremental    # 增量抓取（推荐）
-./refetch_data.sh                  # 全量重新抓取
-
-# 重新分析
-xcrawler analyze interest
-xcrawler analyze behavior
-```
-
-#### 方案 C：仅分析现有数据
-
-```bash
-# 快速分析（不重新抓取）
-python3 analyze_only.py      # 聚类分析
-xcrawler analyze interest    # 专业分析
-xcrawler analyze behavior    # 行为分析
-```
-
-### 4. 统一 CLI 命令
-
-`xcrawler` 支持统一子命令，CLI 参数优先于 `.env` 配置：
-
-```bash
-# 指定用户和抓取页数
-xcrawler fetch -u MiracleHe --pages 10
-
-# 限制后续聚类/画像最多分析的翻译推文数，避免大数据集过慢
-xcrawler fetch -u MiracleHe --pages 10 --analysis-limit 500
-
-# 指定用户和模型
-xcrawler analyze interest -u MiracleHe --model deepseek-chat --limit 300
-
-# 增量抓取指定用户和目标日期
-xcrawler fetch-more -u MiracleHe --target-date 2023-01-01
-
-# 查看帮助
-xcrawler --help
-xcrawler analyze --help
-```
-
-#### 常用子命令
-
-| 命令 | 说明 |
-|------|------|
-| `xcrawler fetch` | 抓取数据、翻译并执行聚类分析 |
-| `xcrawler fetch-more` | 智能增量抓取新推文和历史推文 |
-| `xcrawler translate` | 同步或重翻已有原始推文 |
-| `xcrawler analyze interest` | 专业兴趣画像分析 |
-| `xcrawler analyze behavior` | 时间行为和生活事件分析 |
-| `xcrawler analyze sentiment` | 情感分析 |
-| `xcrawler analyze network` | Hashtag / Mention 网络分析 |
-| `xcrawler report` | 生成图表和 HTML 报告 |
-| `xcrawler export csv` | 导出 CSV |
-
-#### 兼容脚本支持的参数
-
-| 参数 | 说明 | main.py | fetch | analyze_pro | behavior | only |
-|------|------|:-------:|:-----:|:-----------:|:--------:|:----:|
-| `-u/--user` | 目标用户名 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `--pages` | 抓取页数 | ✅ | ✅ | - | - | - |
-| `--model` | LLM 模型名 | ✅ | - | ✅ | - | - |
-| `--batch-size` | 每批翻译条数 | ✅ | - | - | - | - |
-| `--analysis-limit` | 聚类和画像最多分析的翻译推文数 | ✅ | - | - | - | - |
-| `--target-date` | 历史目标日期 | - | ✅ | - | - | - |
-| `--cache-dir` | 缓存目录 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `--temperature` | 模型温度 | - | - | ✅ | - | - |
-| `--limit` | 兴趣画像最多分析的翻译文本数 | - | - | ✅ | - | - |
-| `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
-
-CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。
-
-### 5. 数据可视化
-
-```bash
-# 生成所有图表 + HTML 报告
-xcrawler report
-
-# 指定用户
-xcrawler report -u MiracleHe
-
-# 自定义输出目录
-xcrawler report --output ./my_charts
-
-# 如确需展示敏感生活事件证据，必须显式开启
-xcrawler report --include-sensitive-events
-```
-
-输出文件（默认在 `cache/charts/`）：
-- `{username}_hourly.png` - 24 小时发推热力图
-- `{username}_weekday.png` - 星期分布图
-- `{username}_language.png` - 语言分布饼图
-- `{username}_interests.png` - 兴趣标签图
-- `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
-
-默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
-
-### 6. Hashtag / Mention 网络分析
-
-```bash
-# 分析 hashtag 和 mention
-xcrawler analyze network
-
-# 指定用户，显示 Top 30
-xcrawler analyze network -u MiracleHe --top 30
-```
-
-输出：
-- 终端打印 Top N hashtag/mention 频率
-- `cache/charts/{username}_hashtags.png` - Hashtag 柱状图
-- `cache/charts/{username}_mentions.png` - Mention 柱状图
-- `cache/{username}_network.json` - 完整分析数据
-
-### 7. 情感分析
-
-```bash
-# 对翻译后的推文做情感打分
-xcrawler analyze sentiment
-
-# 指定用户
-xcrawler analyze sentiment -u MiracleHe --top 10
-```
-
-输出：
-- `cache/charts/{username}_sentiment.png` - 情感时间趋势图
-- `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
-- `cache/{username}_sentiment.json` - 情感分析数据
-
-如果某个 LLM 批次调用失败或响应无法解析，对应推文会标记为 `unknown`，不会被误计为 `neutral`。
-
-### 8. CSV 导出
-
-```bash
-# 导出所有数据为 CSV
-xcrawler export csv
-
-# 只导出翻译数据
-xcrawler export csv --type translations
-
-# 指定用户和输出目录
-xcrawler export csv -u MiracleHe --output ./my_data
-```
-
-输出文件（默认在 `cache/csv/`）：
-- `{username}_tweets.csv` - 原始推文（含 hashtag/mention 列）
-- `{username}_translations.csv` - 原文 + 翻译 + 语言
-- `{username}_interests.csv` - 兴趣标签 + 置信度
 
 ## 🌐 多语言翻译功能
 
