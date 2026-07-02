@@ -2,7 +2,7 @@
 
 > Evidence-backed X/Twitter public timeline analysis CLI: fetch public posts, translate multilingual content, and generate interest profiles, behavior patterns, sentiment trends, network signals, and HTML reports.
 
-![xcrawler report preview](assets/screenshots/report-preview.svg)
+![xcrawler report preview](assets/screenshots/note.png)
 
 `xcrawler` 将公开 X/Twitter 时间线转化为可追溯的用户画像与行为洞察。它适合公开账号研究、创作者分析、品牌观察、内容策略和受众洞察；分析结果尽量保留 `tweet_id` 证据，敏感生活事件默认隐藏。
 
