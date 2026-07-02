@@ -12,7 +12,7 @@ from collections import Counter
 
 from xcrawler.clients import x_api
 from xcrawler.clients.llm import create_openai_client
-from xcrawler.config import load_config
+from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import make_translated_tweet
@@ -68,15 +68,14 @@ ds_client = None
 def _get_ds_client():
     global ds_client
     if ds_client is None:
-        ds_client = create_openai_client(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+        api_key = require_secret("DEEPSEEK_API_KEY", DEEPSEEK_API_KEY, purpose="翻译和画像分析")
+        ds_client = create_openai_client(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
     return ds_client
 
 # embed_model moved to main()
 
 
-HEADERS = {
-    "Authorization": f"Bearer {X_BEARER_TOKEN}"
-}
+HEADERS = x_api.auth_headers(X_BEARER_TOKEN) if X_BEARER_TOKEN else {}
 
 # 创建缓存目录
 ensure_dir(CACHE_DIR)
@@ -211,6 +210,14 @@ def print_execution_plan(*, max_pages: int, batch_size: int, no_translate: bool,
         print(f"   后续步骤: 向量化聚类 + 画像摘要（最多 {analysis_limit} 条）")
     print()
 
+
+def validate_runtime_config(*, no_translate: bool) -> None:
+    global HEADERS
+    token = require_secret("X_BEARER_TOKEN", X_BEARER_TOKEN, purpose="抓取公开推文")
+    HEADERS = x_api.auth_headers(token)
+    if not no_translate:
+        require_secret("DEEPSEEK_API_KEY", DEEPSEEK_API_KEY, purpose="翻译和画像分析")
+
 # ======================
 # 主流程
 # ======================
@@ -251,6 +258,8 @@ def main():
     )
     
     try:
+        validate_runtime_config(no_translate=args.no_translate)
+
         # 1. 获取用户ID
         print("🚀 获取用户 ID...")
         user_id = get_user_id(TARGET_USERNAME)
@@ -278,7 +287,7 @@ def main():
         
         if len(raw_tweets) == 0:
             print("❌ 没有抓取到任何推文，请检查用户是否存在或是否有权限")
-            return
+            return 1
         
         # 保存原始推文
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
@@ -290,7 +299,7 @@ def main():
         if args.no_translate:
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
             print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
-            return
+            return 0
 
         print("🧹 清洗 + 智能批量翻译...")
         translated = []
@@ -374,7 +383,7 @@ def main():
 
         if len(translated) < 10:
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")
-            return
+            return 0
 
         analysis_texts = sample_evenly(translated, ANALYSIS_LIMIT)
         if len(translated) > len(analysis_texts):
@@ -449,14 +458,16 @@ def main():
         print("\n" + "=" * 60)
         print(f"✅ 分析完成！共分析 {len(translated)} 条推文，识别 {cluster_num} 个主题")
         print("=" * 60 + "\n")
+        return 0
         
     except Exception as e:
         print(f"\n❌ 程序执行出错: {str(e)}")
         import traceback
         traceback.print_exc()
+        return 1
 
 # ======================
 # 入口
 # ======================
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

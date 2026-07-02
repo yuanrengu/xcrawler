@@ -56,7 +56,7 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
+    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
 
     hour_counts = Counter()
     weekday_counts = Counter()
@@ -109,7 +109,7 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
     import matplotlib.pyplot as plt
     from datetime import timedelta
 
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
+    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
     weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weekday_counts = Counter()
 

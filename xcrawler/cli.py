@@ -13,10 +13,10 @@ def _run_script(module_name: str, args: Sequence[str]) -> int:
     old_argv = sys.argv[:]
     try:
         sys.argv = [f"{module_name}.py", *args]
-        module.main()
+        result = module.main()
     finally:
         sys.argv = old_argv
-    return 0
+    return int(result or 0)
 
 
 def _add_common_options(parser: argparse.ArgumentParser, *, model: bool = False) -> None:

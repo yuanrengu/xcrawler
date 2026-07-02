@@ -255,7 +255,7 @@ def main():
 
     # 生成图表
     print(f"\n🎨 生成图表...")
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
+    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
     chart_sentiment_timeline(sentiment_inputs, sentiments, output_dir, TARGET_USERNAME, tz_offset)
     chart_sentiment_pie(sentiments, output_dir, TARGET_USERNAME)
 

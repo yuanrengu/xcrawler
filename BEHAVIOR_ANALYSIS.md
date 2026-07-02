@@ -61,7 +61,7 @@ python3 analyze_behavior.py
 📊 总推文数: 100
 📅 工作日 vs 周末: 84 vs 16
 
-🕐 最活跃时段（UTC+9）:
+🕐 最活跃时段（UTC+8）:
    12:00 - 9条推文
    11:00 - 8条推文
    20:00 - 8条推文
@@ -165,7 +165,7 @@ CACHE_DIR = "cache"                        # 缓存目录
 
 ## 📝 注意事项
 
-1. 时间分析基于 `TIMEZONE_OFFSET` 环境变量（默认 UTC+9），如需其他时区请在 `.env` 中修改 `TIMEZONE_OFFSET`
+1. 时间分析基于 `TIMEZONE_OFFSET` 环境变量（默认 UTC+8），如需其他时区请在 `.env` 中修改 `TIMEZONE_OFFSET`
 2. AI功能需要有效的 `DEEPSEEK_API_KEY` 环境变量（在 `.env` 文件中配置）
 3. 生活事件检测分析前200条翻译后的推文
 4. 所有分析都是基于**原创推文**（已排除转发和回复）
@@ -173,7 +173,7 @@ CACHE_DIR = "cache"                        # 缓存目录
 ## 🆘 故障排除
 
 **问题：提示 "openai 或 dotenv 未安装"**
-- 解决：运行 `pip3 install openai python-dotenv --break-system-packages`（macOS）
+- 解决：启用虚拟环境后运行 `python3 -m pip install -e ".[all]"`
 
 **问题：没有数据文件**
 - 解决：先运行 `python3 main.py` 抓取数据

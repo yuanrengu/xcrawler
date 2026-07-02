@@ -103,7 +103,7 @@ xcrawler/
 │   └── translation_cache.json             # 翻译缓存（通用）
 ├── cache_backup/                # 备份目录
 ├── tests/                       # 单元测试
-│   └── test_all.py                      # 94 个测试用例（pytest）
+│   └── test_all.py                      # pytest 测试用例
 ├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明
 ├── FETCH_MORE_DATA.md           # 增量抓取说明
 ├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
@@ -148,7 +148,7 @@ xcrawler/
 
 #### 智能自动化功能
 - ✅ **配置自动读取**：从 `.env` 文件自动读取 `TARGET_USERNAME`
-- ✅ **依赖自动检查**：检查并安装缺失的 Python 包（包括 `langdetect`）
+- ✅ **依赖检查**：检查缺失的 Python 包，并提示使用虚拟环境安装
 - ✅ **数据智能备份**：全量模式下自动备份现有数据到 `cache_backup/`
 - ✅ **进度实时显示**：显示抓取进度和API配额使用情况
 - ✅ **结果自动验证**：抓取完成后分析数据质量、时间范围和语言分布
@@ -293,17 +293,16 @@ cp cache_backup/*.json cache/
 项目要求 Python 3.10 或更高版本。
 
 ```bash
-# 推荐：以可编辑模式安装项目和依赖
+# 推荐：使用虚拟环境，安装全功能依赖
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[all]"
+
+# 如果只需要基础 CLI / 抓取 / LLM 功能
 python3 -m pip install -e .
 
-# 或仅安装 requirements.txt
-python3 -m pip install -r requirements.txt
-
-# 如果遇到系统保护，使用（macOS）
-python3 -m pip install -r requirements.txt --break-system-packages
-
-# 或者使用引号避免 shell 解析问题
-python3 -m pip install "langdetect>=1.0.9"
+# 可选依赖：向量聚类/可视化
+python3 -m pip install -e ".[ml,viz]"
 ```
 
 ### 2. 配置 API 密钥
@@ -327,8 +326,8 @@ TARGET_USERNAME=MiracleHe
 # 增量抓取目标日期（格式：YYYY-MM-DD，抓取到此日期或最早推文为止）
 TARGET_DATE=2024-01-01
 
-# 时区偏移（UTC+N），默认为9（日本/韩国），中国请设为8
-TIMEZONE_OFFSET=9
+# 时区偏移（UTC+N），默认 8（中国）
+TIMEZONE_OFFSET=8
 
 # DeepSeek API 配置 (可选，默认值如下)
 DEEPSEEK_BASE_URL=https://api.deepseek.com
@@ -653,7 +652,7 @@ python3 translate_sync.py --force
 📊 总推文数: 100
 📅 工作日 vs 周末: 84 vs 16 (5.25:1)
 
-🕐 最活跃时段（UTC+9）:
+🕐 最活跃时段（UTC+8）:
    12:00 - 9条推文  ← 午休高峰
    11:00 - 8条推文
    20:00 - 8条推文  ← 晚间高峰
@@ -743,7 +742,7 @@ MODEL = os.getenv("LLM_MODEL", "deepseek-chat")          # LLM 模型
 ```python
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
 CACHE_DIR = "cache"            # 缓存目录
-TIMEZONE_OFFSET = 9            # 时区偏移（UTC+N），默认9（日本），中国设为8
+TIMEZONE_OFFSET = 8            # 时区偏移（UTC+N），默认8（中国）
 ```
 
 **多用户配置详见：** [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
@@ -753,24 +752,24 @@ TIMEZONE_OFFSET = 9            # 时区偏移（UTC+N），默认9（日本）�
 ### 必需依赖
 ```
 requests>=2.31.0           # HTTP 请求
+tqdm>=4.66.0               # 进度条
 openai>=1.0.0             # DeepSeek API 调用
 python-dotenv>=1.0.0      # 环境变量管理
 langdetect>=1.0.9         # 语言检测（多语言翻译支持）
 ```
 
-### 分析依赖
+### 向量聚类依赖（`.[ml]`）
 ```
 sentence-transformers>=2.2.0  # 文本向量化
 scikit-learn>=1.3.0          # 聚类算法
-tqdm>=4.66.0                 # 进度条
-matplotlib>=3.7.0            # 数据可视化图表
-```
-
-### 深度学习依赖
-```
 transformers>=4.35.0
 torch>=2.0.0
 huggingface-hub>=0.19.0
+```
+
+### 可视化依赖（`.[viz]`）
+```
+matplotlib>=3.7.0            # 数据可视化图表
 ```
 
 ### 测试依赖
@@ -806,7 +805,7 @@ pytest>=7.0.0               # 单元测试框架（可选）
 
 #### 自动功能
 - ✅ 从 `.env` 自动读取 `TARGET_USERNAME`
-- ✅ 自动检查和安装依赖包
+- ✅ 自动检查依赖包并提示安全安装方式
 - ✅ 智能备份现有数据（全量模式）
 - ✅ 数据统计和验证
 - ✅ 后续分析步骤提示
@@ -858,11 +857,11 @@ pytest>=7.0.0               # 单元测试框架（可选）
 
 ### 问题1: "ModuleNotFoundError: No module named 'langdetect'"
 ```bash
-# 安装语言检测库（注意使用引号）
-pip3 install "langdetect>=1.0.9"
+# 建议先启用虚拟环境，再安装语言检测库（注意使用引号）
+python3 -m pip install "langdetect>=1.0.9"
 
 # 或安装所有依赖
-pip3 install -r requirements.txt --break-system-packages
+python3 -m pip install -e ".[all]"
 ```
 
 ### 问题2: "zsh: 1.0.9 not found"
@@ -874,10 +873,10 @@ pip3 install "langdetect>=1.0.9"
 ### 问题3: "ModuleNotFoundError: No module named 'XXX'"
 ```bash
 # 安装所有依赖
-pip3 install -r requirements.txt --break-system-packages
+python3 -m pip install -e ".[all]"
 
 # 或仅安装必需依赖
-pip3 install requests openai python-dotenv "langdetect>=1.0.9" --break-system-packages
+python3 -m pip install -e .
 ```
 
 ### 问题4: "找不到数据文件"

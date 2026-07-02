@@ -79,17 +79,21 @@ echo ""
 
 # 4. 检查依赖
 echo "🔍 检查依赖..."
-python3 -c "import requests, openai, dotenv, langdetect" 2>/dev/null
+if [ "$MODE" = "full" ]; then
+    python3 -c "import requests, openai, dotenv, langdetect, sentence_transformers, sklearn" 2>/dev/null
+else
+    python3 -c "import requests, openai, dotenv, langdetect" 2>/dev/null
+fi
 if [ $? -ne 0 ]; then
-    echo "⚠️  缺少依赖，正在安装..."
-    pip3 install requests openai python-dotenv "langdetect>=1.0.9" --break-system-packages -q
-    if [ $? -eq 0 ]; then
-        echo "✅ 依赖安装完成"
+    echo "❌ 缺少依赖。请先在虚拟环境中安装项目依赖:"
+    echo "   python3 -m venv .venv"
+    echo "   source .venv/bin/activate"
+    if [ "$MODE" = "full" ]; then
+        echo "   python3 -m pip install -e '.[all]'"
     else
-        echo "❌ 依赖安装失败，请手动运行:"
-        echo "   pip3 install requests openai python-dotenv \"langdetect>=1.0.9\" --break-system-packages"
-        exit 1
+        echo "   python3 -m pip install -e ."
     fi
+    exit 1
 else
     echo "✅ 依赖已安装"
 fi
@@ -110,6 +114,7 @@ if [ $exit_code -eq 0 ]; then
     echo ""
     echo "🌍 同步翻译数据..."
     python3 translate_sync.py --user "$TARGET_USERNAME"
+    exit_code=$?
 fi
 
 echo "=================================================="

@@ -822,6 +822,39 @@ class TestEvidenceService:
         assert validated["interests"][0]["evidence_tweet_ids"] == []
         assert validated["interests"][0]["evidence_status"] == "missing"
 
+    def test_validate_interest_evidence_strict_rejects_unsupported_interests(self):
+        from xcrawler.services.evidence import EvidenceValidationError, validate_interest_evidence
+
+        result = {"interests": [{"tag": "AI", "evidence_count": 9, "evidence_tweet_ids": ["missing"]}]}
+
+        with pytest.raises(EvidenceValidationError):
+            validate_interest_evidence(result, [], require_evidence=True)
+
+        assert result["interests"] == []
+        assert result["rejected_interests"][0]["evidence_count"] == 0
+
+    def test_validate_life_event_evidence_strict_filters_missing(self):
+        from xcrawler.services.evidence import validate_life_event_evidence
+
+        events = {
+            "other_events": [
+                {"description": "supported", "evidence_tweet_ids": ["known"]},
+                {"description": "unsupported", "evidence_tweet_ids": ["missing"]},
+            ]
+        }
+        translated = [{
+            "tweet_id": "known",
+            "original": "Hello",
+            "translated": "你好",
+            "detected_language": "en",
+            "created_at": "2024-01-01",
+        }]
+
+        validated = validate_life_event_evidence(events, translated, require_evidence=True)
+
+        assert len(validated["other_events"]) == 1
+        assert validated["other_events"][0]["description"] == "supported"
+
     def test_render_evidence_html_includes_translated_text(self):
         from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 
@@ -1079,6 +1112,13 @@ class TestCli:
 
         mock_main.assert_called_once_with()
 
+    def test_run_script_returns_script_exit_code(self):
+        from xcrawler import cli
+        import analyze_pro
+
+        with patch.object(analyze_pro, "main", return_value=1):
+            assert cli._run_script("analyze_pro", ["--cache-dir", "missing-cache"]) == 1
+
     def test_translate_forwards_cache_dir(self):
         from xcrawler import cli
 
@@ -1095,6 +1135,33 @@ class TestCli:
             data = tomllib.load(f)
 
         assert data["project"]["scripts"]["xcrawler"] == "xcrawler.cli:main"
+
+    def test_pyproject_splits_heavy_optional_dependencies(self):
+        import tomllib
+
+        with open("pyproject.toml", "rb") as f:
+            data = tomllib.load(f)
+
+        assert "torch>=2.0.0" not in data["project"]["dependencies"]
+        assert "torch>=2.0.0" in data["project"]["optional-dependencies"]["ml"]
+        assert "matplotlib>=3.7.0" in data["project"]["optional-dependencies"]["viz"]
+
+
+class TestConfigValidation:
+    """测试配置和密钥校验"""
+
+    def test_require_secret_rejects_missing_and_placeholder(self):
+        from xcrawler.config import require_secret
+
+        with pytest.raises(RuntimeError):
+            require_secret("X_BEARER_TOKEN", None)
+        with pytest.raises(RuntimeError):
+            require_secret("X_BEARER_TOKEN", "your_x_bearer_token_here")
+
+    def test_require_secret_strips_valid_value(self):
+        from xcrawler.config import require_secret
+
+        assert require_secret("X_BEARER_TOKEN", "  token  ") == "token"
 
 
 class TestAnalysisRuns:

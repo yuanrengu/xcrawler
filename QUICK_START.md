@@ -9,8 +9,10 @@
 git clone https://github.com/yuanrengu/xcrawler.git
 cd xcrawler
 
-# 推荐：安装项目和依赖，获得 xcrawler 命令
-python3 -m pip install -e .
+# 推荐：使用虚拟环境，安装全功能依赖并获得 xcrawler 命令
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[all]"
 ```
 
 ### Step 2: 配置 API（1分钟）
@@ -142,7 +144,7 @@ xcrawler analyze interest --limit 300
 
 编辑 `.env` 文件：
 ```bash
-# 时区偏移（UTC+N），默认9（日本），中国设为8
+# 时区偏移（UTC+N），默认8（中国）
 TIMEZONE_OFFSET=8
 ```
 
@@ -185,13 +187,10 @@ xcrawler analyze interest --limit 100
 
 ### Q1: 安装依赖时报错
 ```bash
-# macOS 系统保护
-pip3 install -r requirements.txt --break-system-packages
-
-# 或使用虚拟环境
-python3 -m venv venv
-source venv/bin/activate
-pip3 install -r requirements.txt
+# 使用虚拟环境
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e ".[all]"
 ```
 
 ### Q2: API 调用失败

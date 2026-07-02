@@ -5,12 +5,15 @@ from typing import Callable
 
 import requests
 
+from xcrawler.config import require_secret
+
 
 RequestGet = Callable[..., requests.Response]
 
 
 def auth_headers(bearer_token: str | None) -> dict[str, str]:
-    return {"Authorization": f"Bearer {bearer_token}"}
+    token = require_secret("X_BEARER_TOKEN", bearer_token, purpose="抓取公开推文")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def get_user_id(username: str, headers: dict[str, str], request_get: RequestGet = requests.get) -> str:

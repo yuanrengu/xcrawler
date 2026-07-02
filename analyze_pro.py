@@ -310,7 +310,7 @@ def main():
         )
         
         result = analyze_user_interest(texts, temperature=args.temperature)
-        result = validate_interest_evidence(result, translated_records)
+        result = validate_interest_evidence(result, translated_records, require_evidence=True)
         result["analysis_run_id"] = run.id
         run.llm_calls = 1
         if LAST_LLM_RESPONSE:
@@ -344,6 +344,7 @@ def main():
         print("=" * 60)
         print("✅ 分析完成！")
         print("=" * 60)
+        return 0
         
     except FileNotFoundError as e:
         if run:
@@ -352,16 +353,19 @@ def main():
         print()
         print("💡 请先运行以下命令抓取数据:")
         print("   python3 main.py")
+        return 1
         
     except ValueError as e:
         if run:
             record_analysis_run(store, fail_analysis_run(run, e))
         print(f"❌ 错误: {e}")
+        return 1
         
     except RuntimeError as e:
         if run:
             record_analysis_run(store, fail_analysis_run(run, e))
         print(f"❌ 运行时错误: {e}")
+        return 1
         
     except Exception as e:
         if run:
@@ -369,7 +373,8 @@ def main():
         import traceback
         traceback.print_exc()
         print(f"❌ 未知错误: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

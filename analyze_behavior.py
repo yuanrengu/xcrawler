@@ -61,8 +61,8 @@ def _get_llm_provider():
 
 def analyze_time_patterns(raw_tweets):
     """分析发推时间模式"""
-    # UTC+N 时区偏移，默认+9 (日本/韩国)
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "9"))
+    # UTC+N 时区偏移，默认+8（中国）
+    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
     JST_OFFSET = timedelta(hours=tz_offset)
     tz_label = f"UTC+{int(tz_offset)}" if tz_offset == int(tz_offset) else f"UTC+{tz_offset}"
     
@@ -287,7 +287,7 @@ def main():
     
     if not os.path.exists(raw_file) or not os.path.exists(translated_file):
         print(f"❌ 找不到数据文件，请先运行 main.py 抓取数据")
-        return
+        return 1
     
     print("📂 加载数据...")
     with open(raw_file, 'r', encoding='utf-8') as f:
@@ -332,7 +332,7 @@ def main():
             life_events = detect_life_events(translated_data)
             if life_events:
                 life_events = _normalize_life_events(life_events)
-                life_events = validate_life_event_evidence(life_events, translated_data)
+                life_events = validate_life_event_evidence(life_events, translated_data, require_evidence=True)
                 life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
                 print("✅ 事件检测完成\n")
             else:
@@ -356,7 +356,8 @@ def main():
             behavior_summary = "需要安装 openai 和 python-dotenv 才能使用AI分析功能"
     except Exception as e:
         record_analysis_run(store, fail_analysis_run(run, e))
-        raise
+        print(f"❌ 行为分析失败: {e}")
+        return 1
     
     # 5. 保存结果
     result = {
@@ -453,6 +454,7 @@ def main():
     print("\n" + "=" * 60)
     print("✅ 分析完成！")
     print("=" * 60 + "\n")
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
