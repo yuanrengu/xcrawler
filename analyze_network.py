@@ -9,8 +9,10 @@ from datetime import datetime
 from collections import Counter
 
 from dotenv import load_dotenv
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
+
 _ = load_dotenv()
 
 TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
@@ -199,6 +201,15 @@ def main():
         print("   请先运行 main.py 抓取数据")
         return
 
+    model = os.getenv("LLM_MODEL", "deepseek-chat")
+    store = JsonStore(CACHE_DIR)
+    run = create_analysis_run(
+        username=TARGET_USERNAME,
+        analysis_type="network",
+        model=model,
+        input_range={"raw_tweets": len(raw_tweets)},
+    )
+
     print(f"📂 已加载 {len(raw_tweets)} 条推文\n")
 
     # 提取实体
@@ -221,6 +232,7 @@ def main():
 
     # 保存结果
     save_results(TARGET_USERNAME, hashtag_counts, mention_counts, pair_counts, CACHE_DIR)
+    record_analysis_run(store, complete_analysis_run(run))
 
     print("\n" + "=" * 60)
     print(f"✅ 分析完成！")
@@ -228,7 +240,8 @@ def main():
     print(f"   Mentions: {len(mention_counts)} 个")
     print(f"   Pairs: {len(pair_counts)} 个")
     print("=" * 60 + "\n")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

@@ -309,7 +309,7 @@ def main():
         # 预处理：清洗和语言检测
         to_process = []
         for t in raw_tweets:
-            original_text = clean_text(t["text"])
+            original_text = clean_text(t.get("text", ""))
             if len(original_text) < 6:
                 continue
             detected_lang = detect_language(original_text)

@@ -44,7 +44,7 @@ def main():
     translated_data_raw = load_json(translated_file)
     if translated_data_raw is None:
         print(f"❌ 找不到翻译文件: {translated_file}")
-        return
+        return 0
     translated_data = normalize_translated_tweets(translated_data_raw)
     
     print("📂 加载已有的翻译数据...")
@@ -56,7 +56,7 @@ def main():
     
     if len(translated) < 10:
         print("⚠️ 可用推文过少（< 10条），无法进行有效分析")
-        return
+        return 0
     
     # 2. 动态聚类
     cluster_num = max(2, min(8, len(translated) // 10))
@@ -121,6 +121,7 @@ def main():
     print("\n" + "=" * 60)
     print(f"✅ 分析完成！共分析 {len(translated)} 条推文，识别 {cluster_num} 个主题")
     print("=" * 60 + "\n")
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

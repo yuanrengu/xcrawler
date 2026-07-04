@@ -42,8 +42,9 @@ class OpenAICompatibleProvider:
         )
         latency_ms = int((perf_counter() - started) * 1000)
         usage = getattr(response, "usage", None)
+        raw = response.choices[0].message.content
         return LLMResponse(
-            content=response.choices[0].message.content.strip(),
+            content=raw.strip() if raw else "",
             model=model,
             provider=self.name,
             prompt_tokens=getattr(usage, "prompt_tokens", None),

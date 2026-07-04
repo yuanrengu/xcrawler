@@ -158,8 +158,21 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
             
             time.sleep(REQUEST_INTERVAL)
             
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if status in (401, 403):
+                print(f"\n❌ 认证失败（HTTP {status}），请检查 X_BEARER_TOKEN")
+                raise
+            print(f"\n⚠️ 第 {page + 1} 页 HTTP 错误: {e}")
+            break
+        except requests.exceptions.RequestException as e:
+            print(f"\n⚠️ 第 {page + 1} 页网络错误: {e}")
+            break
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"\n⚠️ 第 {page + 1} 页数据解析失败: {e}")
+            break
         except Exception as e:
-            print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
+            print(f"\n⚠️ 第 {page + 1} 页抓取失败: {e}")
             break
     
     return all_tweets, reached_target, pages_fetched
@@ -315,15 +328,16 @@ def main():
     if all_new_tweets:
         print(f"📊 总计新增抓取: {len(all_new_tweets)} 条")
         
-        # 合并去重
-        combined = existing_tweets + all_new_tweets
-        # 再次按ID去重
-        unique_tweets = {t["id"]: t for t in combined}.values()
-        final_list = list(unique_tweets)
-        
-        # 排序
-        final_list.sort(key=lambda t: t.get("created_at", ""), reverse=True)
-        
+        # 合并去重：按 ID 保留最新的一条
+        seen: dict[str, dict] = {}
+        for t in combined:
+            tid = t.get("id")
+            if tid is None:
+                continue
+            if tid not in seen or t.get("created_at", "") > seen[tid].get("created_at", ""):
+                seen[tid] = t
+        final_list = sorted(seen.values(), key=lambda t: t.get("created_at", ""), reverse=True)
+
         print(f"💾 保存总推文数: {len(final_list)} 条")
         
         # 写入文件

@@ -9,6 +9,7 @@ from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore
+from xcrawler.utils.time import parse_twitter_datetime
 
 # 尝试导入可选依赖
 try:
@@ -81,11 +82,8 @@ def analyze_time_patterns(raw_tweets):
         if "created_at" not in tweet:
             continue
         
-        # 解析UTC时间并转换为本地时间（兼容有/无微秒格式）
-        try:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%S.%fZ")
-        except ValueError:
-            dt_utc = datetime.strptime(tweet["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+        # 解析UTC时间并转换为本地时间
+        dt_utc = parse_twitter_datetime(tweet["created_at"])
         dt_jst = dt_utc + JST_OFFSET
         
         hour = dt_jst.hour

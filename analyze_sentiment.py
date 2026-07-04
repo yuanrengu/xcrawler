@@ -113,7 +113,7 @@ def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, 
         except ValueError:
             try:
                 dt = datetime.strptime(item["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-            except:
+            except (ValueError, TypeError):
                 continue
         month_key = dt.strftime("%Y-%m")
         monthly[month_key][sent] += 1
