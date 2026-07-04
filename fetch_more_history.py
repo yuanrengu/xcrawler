@@ -96,14 +96,16 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
             if response.status_code == 429:
                 reset_time = response.headers.get('x-rate-limit-reset')
                 if reset_time:
-                    wait_seconds = int(reset_time) - int(time.time())
+                    try:
+                        wait_seconds = int(float(reset_time)) - int(time.time())
+                    except (ValueError, TypeError):
+                        print("⚠️ 无法解析限流重置时间，跳过本次抓取")
+                        break
                     print(f"⏳ API 限流，需等待 {wait_seconds // 60} 分 {wait_seconds % 60} 秒...")
-                    # 如果等待时间太长，直接退出
                     if wait_seconds > 60:
                         print("⚠️ 等待时间过长，跳过本次抓取")
                         break
                     time.sleep(wait_seconds + 5)
-                    # 重试当前请求
                     response = requests.get(url, headers=HEADERS, params=params, timeout=10)
                 else:
                     print(f"⚠️ API 限流，请稍后再试")

@@ -2,7 +2,6 @@ from __future__ import annotations
 import os
 import re
 import json
-import time
 import argparse
 import requests
 
@@ -138,40 +137,9 @@ def _parse_batch_response(response: str, expected_count: int) -> list[str]:
     return parse_batch_response(response, expected_count)
 
 def deepseek_profile_summary(cluster_text):
-    """生成用户画像，支持重试"""
-    prompt = f"""
-你是一名数据分析师。
-
-请根据以下推文主题，总结该用户的：
-1. 核心兴趣（1-3 个）
-2. 次要兴趣
-3. 内容风格
-4. 情绪倾向
-
-要求：
-- 使用简体中文
-- 偏客观分析
-- 输出结构化结果
-
-推文主题内容：
-{cluster_text}
-"""
-    
-    for attempt in range(MAX_RETRIES):
-        try:
-            r = _get_ds_client().chat.completions.create(
-                model=LLM_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
-            )
-            return r.choices[0].message.content.strip()
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                print(f"⚠️ 画像生成失败，重试 {attempt + 1}/{MAX_RETRIES}...")
-                time.sleep(2 ** attempt)
-            else:
-                print(f"❌ 画像生成失败: {str(e)}")
-                raise
+    """生成用户画像，支持重试（委托给 xcrawler.services.profile）"""
+    from xcrawler.services.profile import deepseek_profile_summary as _impl
+    return _impl(cluster_text, client_factory=_get_ds_client, model=LLM_MODEL, max_retries=MAX_RETRIES)
 
 # ======================
 # X API
@@ -347,8 +315,11 @@ def main():
 
         # 最终保存缓存
         save_translation_cache(translation_cache)
-        batches = max(1, (len(all_texts) + BATCH_SIZE - 1) // BATCH_SIZE)
-        print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
+        if all_texts:
+            batches = (len(all_texts) + BATCH_SIZE - 1) // BATCH_SIZE
+            print(f"✅ 批量翻译完成，共 {batches} 批（每批 {BATCH_SIZE} 条）\n")
+        else:
+            print("✅ 无需要翻译的推文\n")
         print(f"📈 翻译 LLM 调用: {translation_metrics['llm_calls']} 次")
         if translation_metrics.get("total_tokens"):
             print(f"   Token 用量: {translation_metrics['total_tokens']}")

@@ -3,20 +3,21 @@ import json
 import argparse
 from sklearn.cluster import KMeans
 from datetime import datetime
+
+from dotenv import load_dotenv
+from xcrawler.clients.llm import create_openai_client
+from xcrawler.config import load_config, require_secret
+from xcrawler.services.profile import deepseek_profile_summary
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import normalize_translated_tweets
 
-# 禁用 tokenizers 并行警告
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-# 从 main.py 导入公共函数
-from main import deepseek_profile_summary, CACHE_DIR
-
-from dotenv import load_dotenv
 _ = load_dotenv()
+_config = load_config()
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
+CACHE_DIR = _config.cache_dir
+LLM_MODEL = _config.llm_model
+TARGET_USERNAME = _config.target_username
 
 def parse_args():
     parser = argparse.ArgumentParser(description="快速兴趣画像分析（仅分析现有数据）")
@@ -86,14 +87,18 @@ def main():
         print(f"   主题 {k}: {len(v)} 条推文")
     print()
     
-    # 3. 生成画像（使用 main.py 中的公共函数）
+    # 3. 生成画像
     cluster_text = ""
     for k, v in sorted(clusters.items()):
         cluster_text += f"\n【主题 {k}】（共 {len(v)} 条）\n"
         cluster_text += "\n".join(v[:5]) + "\n"
-    
+
     print("🧠 生成兴趣画像...")
-    profile = deepseek_profile_summary(cluster_text)
+    llm_client = lambda: create_openai_client(
+        api_key=require_secret("DEEPSEEK_API_KEY", _config.deepseek_api_key, purpose="兴趣画像"),
+        base_url=_config.deepseek_base_url,
+    )
+    profile = deepseek_profile_summary(cluster_text, client_factory=llm_client, model=LLM_MODEL)
     
     # 4. 保存完整分析结果
     result = {

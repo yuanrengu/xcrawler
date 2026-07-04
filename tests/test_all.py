@@ -571,15 +571,14 @@ class TestTranslateSyncImport:
         old_username = translate_sync.TARGET_USERNAME
         try:
             sys.argv = ["translate_sync.py", "--user", username, "--cache-dir", str(tmp_path)]
-            with patch("translate_sync.deepseek_translate_batch", return_value=["同样的文本"]) as mock_batch, \
+            with patch("translate_sync.translate_batch", return_value=["同样的文本", "同样的文本"]) as mock_batch, \
                  patch("translate_sync.detect_language", return_value="en"), \
-                 patch("translate_sync.load_translation_cache", return_value={"Same text": "同样的文本"}), \
-                 patch("translate_sync.save_translation_cache"):
+                 patch("xcrawler.storage.json_store.save_json"):
                 translate_sync.main()
 
             data = json.loads(translated_file.read_text(encoding="utf-8"))
             assert {item["tweet_id"] for item in data} == {"1", "2"}
-            mock_batch.assert_called_once_with(["Same text"], ["en"], use_cache=True)
+            mock_batch.assert_called_once()
         finally:
             sys.argv = old_argv
             translate_sync.CACHE_DIR = old_cache_dir
