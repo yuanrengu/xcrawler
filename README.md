@@ -19,8 +19,6 @@
 - 📦 **本地优先** — 所有 JSON、CSV、图表、HTML 报告均存储在本地 `cache/` 目录
 - 🧩 **模块化** — 统一 `xcrawler` CLI，支持可插拔存储和 LLM Provider
 
-**30 秒上手：**
-
 ```bash
 python3 -m pip install -e ".[all]"          # 安装全功能依赖
 xcrawler fetch --user MiracleHe             # 抓取 + 翻译 + 聚类
@@ -46,6 +44,9 @@ xcrawler report --user MiracleHe            # 生成图表 + HTML 报告
 - [故障排除](#-故障排除)
 - [运行测试](#-运行测试)
 - [模块化结构](#-模块化结构)
+- [便捷脚本](#-便捷脚本)
+- [多语言翻译](#-多语言翻译功能)
+- [输出示例](#-输出示例)
 - [更新日志](#-更新日志)
 - [贡献](#-贡献)
 - [隐私与责任使用](#-privacy--responsible-use)
@@ -147,22 +148,15 @@ xcrawler analyze behavior
 #### 方案 B：增量抓取（推荐 Free API）
 
 ```bash
-# 首次抓取
-xcrawler fetch
-
-# 智能增量抓取（自动抓取最新 + 抓取到2024年1月1日历史）
+# 智能增量抓取（自动抓取最新 + 抓取到指定日期历史）
 xcrawler fetch-more
 
 # 确保新数据被翻译（关键步骤）
 xcrawler translate
 
-# 或使用便捷脚本（已包含同步逻辑）
+# 或使用便捷脚本（已包含同步逻辑），详见 [便捷脚本](#便捷脚本)
 ./refetch_data.sh --incremental    # 增量抓取（推荐）
 ./refetch_data.sh                  # 全量重新抓取
-
-# 重新分析
-xcrawler analyze interest
-xcrawler analyze behavior
 ```
 
 #### 方案 C：仅分析现有数据
@@ -210,22 +204,9 @@ xcrawler analyze --help
 | `xcrawler report` | 生成图表和 HTML 报告 |
 | `xcrawler export csv` | 导出 CSV |
 
-#### 兼容脚本支持的参数
+统一 CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。运行前会显示执行计划（预估抓取页数、翻译批次、LLM 调用范围）。
 
-| 参数 | 说明 | main.py | fetch | analyze_pro | behavior | only |
-|------|------|:-------:|:-----:|:-----------:|:--------:|:----:|
-| `-u/--user` | 目标用户名 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `--pages` | 抓取页数 | ✅ | ✅ | - | - | - |
-| `--model` | LLM 模型名 | ✅ | - | ✅ | - | - |
-| `--batch-size` | 每批翻译条数 | ✅ | - | - | - | - |
-| `--analysis-limit` | 聚类和画像最多分析的翻译推文数 | ✅ | - | - | - | - |
-| `--target-date` | 历史目标日期 | - | ✅ | - | - | - |
-| `--cache-dir` | 缓存目录 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `--temperature` | 模型温度 | - | - | ✅ | - | - |
-| `--limit` | 兴趣画像最多分析的翻译文本数 | - | - | ✅ | - | - |
-| `--no-translate` | 仅抓取不翻译 | ✅ | - | - | - | - |
-
-CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。
+> 旧脚本入口（`main.py`、`analyze_pro.py` 等）仍保留作为 legacy 兼容，但不再逐条枚举其参数。
 
 ### 5. 数据可视化
 
@@ -251,6 +232,8 @@ xcrawler report --include-sensitive-events
 - `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
 
 默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
+
+> **快速决策**：首次使用 → `xcrawler fetch --user <用户名>` 开始；日常更新 → `xcrawler fetch-more` 或 `./refetch_data.sh -i`；已有数据仅需分析 → `xcrawler analyze interest`。需要完整历史时，配合 `.env` 中的 `TARGET_DATE` 使用 `fetch-more --target-date`。
 
 ### 6. Hashtag / Mention 网络分析
 
@@ -378,42 +361,62 @@ xcrawler export csv -u MiracleHe --output ./my_data
 
 ```
 xcrawler/
-├── main.py                      # 主程序：数据抓取 + 翻译 + 聚类分析
-├── fetch_more_history.py        # 智能增量抓取：双向抓取（新推文 + 历史补全）
-├── analyze_pro.py               # 专业分析：AI 驱动的兴趣画像分析
-├── analyze_behavior.py          # 行为分析：时间模式 + 生活事件
-├── translate_sync.py            # 翻译同步：增量翻译/重翻工具
-├── analyze_only.py              # 快速分析：仅兴趣画像（不抓取数据）
-├── visualize.py                 # 数据可视化：图表生成
-├── analyze_network.py           # Hashtag/Mention 网络分析
-├── analyze_sentiment.py         # 情感分析：正/中/负打分 + 趋势图
-├── export_csv.py                # CSV 导出：推文/翻译/兴趣导出
-├── refetch_data.sh              # 智能抓取脚本：支持全量/增量模式
-├── requirements.txt             # 依赖包列表
-├── .env                         # 环境变量配置（需自行创建）
-├── cache/                       # 缓存目录
-│   ├── {username}_raw_tweets.json         # 原始推文
-│   ├── {username}_translated.json         # 翻译结果
-│   ├── {username}_analysis.json           # 聚类分析结果
-│   ├── {username}_interest_profile.json   # 专业兴趣画像
-│   ├── {username}_behavior.json           # 行为模式分析
-│   ├── {username}_network.json            # Hashtag/Mention 分析
-│   ├── {username}_profile.json            # 用户基础信息
-│   ├── {username}_sentiment.json          # 情感分析结果
-│   ├── {username}_failed.json             # 翻译失败列表（自动重试）
-│   ├── charts/{username}_report.html      # 可视化 HTML 报告
-│   └── translation_cache.json             # 翻译缓存（通用）
-├── cache_backup/                # 备份目录
-├── tests/                       # 单元测试
-│   └── test_all.py                      # pytest 测试用例
-├── CONFIG_GUIDE.md              # 配置指南：多用户配置说明
-├── FETCH_MORE_DATA.md           # 增量抓取说明
-├── BEHAVIOR_ANALYSIS.md         # 行为分析功能说明
-├── QUICK_START.md               # 快速开始指南
-├── CONTRIBUTING.md              # 贡献指南
-├── SECURITY.md                  # 安全与隐私报告说明
-├── RELEASE_CHECKLIST.md         # 发布检查清单
-└── ANALYSIS_SUMMARY.md          # 示例分析报告
+├── xcrawler/                     # 核心包
+│   ├── cli.py                    # 统一 CLI 入口
+│   ├── config.py                 # .env 配置读取与覆盖
+│   ├── models.py                 # 数据模型
+│   ├── paths.py                  # cache 路径管理
+│   ├── privacy_guard.py          # 敏感事件脱敏
+│   ├── clients/
+│   │   ├── llm.py                # OpenAI/DeepSeek 兼容客户端
+│   │   └── x_api.py              # X API 用户与推文接口
+│   ├── llm/
+│   │   └── provider.py           # LLMProvider 抽象
+│   ├── services/
+│   │   ├── analysis_runs.py      # 分析运行记录
+│   │   ├── fetch_plan.py         # 抓取请求量预估
+│   │   ├── records.py            # 翻译记录兼容层
+│   │   └── translation.py        # 单条/批量翻译
+│   ├── storage/
+│   │   ├── base.py               # Storage 接口
+│   │   └── json_store.py         # JSON 读写与目录创建
+│   └── utils/
+│       ├── cli_validation.py     # CLI 数值参数校验
+│       ├── text.py               # 文本清洗与语言检测
+│       └── time.py               # Twitter 时间解析
+├── main.py                       # 主程序：抓取 + 翻译 + 聚类
+├── fetch_more_history.py         # 智能增量抓取（新推文 + 历史补全）
+├── analyze_pro.py                # 专业兴趣画像（AI 驱动）
+├── analyze_behavior.py           # 时间行为 + 生活事件检测
+├── analyze_network.py            # Hashtag/Mention 网络分析
+├── analyze_sentiment.py          # 情感分析
+├── analyze_only.py               # 快速分析（仅分析不抓取）
+├── visualize.py                  # 图表生成 + HTML 报告
+├── translate_sync.py             # 增量翻译/重翻工具
+├── export_csv.py                 # CSV 导出
+├── refetch_data.sh               # 智能抓取便捷脚本
+├── pyproject.toml                # 包配置与依赖管理
+├── requirements.txt              # 依赖列表（兼容旧流程）
+├── .env.example                  # 环境变量模板
+├── .env                          # 环境变量（自行创建，不提交）
+├── cache/                        # 缓存目录（不提交）
+│   ├── charts/                   # 可视化图表输出
+│   ├── {username}_raw_tweets.json
+│   ├── {username}_translated.json
+│   ├── {username}_interest_profile.json
+│   ├── {username}_behavior.json
+│   ├── {username}_network.json
+│   ├── {username}_profile.json
+│   ├── {username}_sentiment.json
+│   ├── {username}_analysis_runs.json
+│   └── translation_cache.json
+├── cache_backup/                 # 全量抓取备份目录
+├── tests/
+│   └── test_all.py               # pytest 测试用例
+├── CONTRIBUTING.md               # 贡献指南
+├── SECURITY.md                   # 安全与隐私报告
+├── CONFIG_GUIDE.md               # 配置指南
+└── LICENSE                       # MIT License
 ```
 
 ## 🛠️ 便捷脚本详解
@@ -801,66 +804,34 @@ TIMEZONE_OFFSET = 8            # 时区偏移（UTC+N），默认8（中国）
 
 ## 📋 依赖说明
 
-### 必需依赖
-```
-requests>=2.31.0           # HTTP 请求
-tqdm>=4.66.0               # 进度条
-openai>=1.0.0             # DeepSeek API 调用
-python-dotenv>=1.0.0      # 环境变量管理
-langdetect>=1.0.9         # 语言检测（多语言翻译支持）
-```
+### 基础安装（必需）
 
-### 向量聚类依赖（`.[ml]`）
-```
-sentence-transformers>=2.2.0  # 文本向量化
-scikit-learn>=1.3.0          # 聚类算法
-transformers>=4.35.0
-torch>=2.0.0
-huggingface-hub>=0.19.0
-```
-
-### 可视化依赖（`.[viz]`）
-```
-matplotlib>=3.7.0            # 数据可视化图表
-```
-
-### 测试依赖
-```
-pytest>=7.0.0               # 单元测试框架（可选）
-```
-
-## 🛠️ 便捷脚本使用
-
-### refetch_data.sh - 智能数据抓取脚本
-
-这个脚本支持两种抓取模式，自动从 `.env` 读取配置：
-
-#### 使用方法
 ```bash
-# 查看帮助
-./refetch_data.sh --help
-
-# 全量重新抓取（默认模式）
-./refetch_data.sh
-
-# 增量抓取（推荐Free API用户）
-./refetch_data.sh --incremental
-./refetch_data.sh -i              # 简写
+python3 -m pip install -e .
 ```
 
-#### 模式对比
+基础包包含：数据抓取、翻译、分析、CLI 等核心功能。
 
-| 模式 | 命令 | 适用场景 | 数据处理 | API消耗 |
-|------|------|----------|----------|---------|
-| **全量抓取** | `./refetch_data.sh` | 首次使用、重新开始 | 备份旧数据，重新抓取 | 高（50页） |
-| **增量抓取** | `./refetch_data.sh -i` | 日常更新、Free API | 保留现有，补充新发布（向前）+ 补全历史（向后） | 低（10页） |
+### 全功能安装
 
-#### 自动功能
-- ✅ 从 `.env` 自动读取 `TARGET_USERNAME`
-- ✅ 自动检查依赖包并提示安全安装方式
-- ✅ 智能备份现有数据（全量模式）
-- ✅ 数据统计和验证
-- ✅ 后续分析步骤提示
+```bash
+python3 -m pip install -e ".[all]"
+```
+
+全功能包在基础之上增加向量聚类（`.[ml]`）和可视化（`.[viz]`）依赖：
+
+| 可选依赖包 | 安装方式 | 用途 |
+|-----------|---------|------|
+| 向量聚类 | `pip install -e ".[ml]"` | 文本向量化、K-Means 聚类 |
+| 可视化 | `pip install -e ".[viz]"` | matplotlib 图表生成 |
+| 全功能 | `pip install -e ".[all]"` | 聚类 + 可视化，推荐首次安装 |
+| 测试 | `pip install -e ".[test]"` | pytest 测试框架 |
+
+完整依赖列表见 [`pyproject.toml`](pyproject.toml)。
+
+## 🛠️ 便捷脚本
+
+`refetch_data.sh` 提供全量/增量两种抓取模式，自动从 `.env` 读取配置。详细说明（输出示例、使用策略、故障恢复等）见下方 [便捷脚本详解](#%EF%B8%8F-%E4%BE%BF%E6%8D%B7%E8%84%9A%E6%9C%AC%E8%AF%A6%E8%A7%A3)。
 
 ## 🔍 使用场景
 
@@ -968,86 +939,20 @@ chmod +x refetch_data.sh
 
 ## 🧪 运行测试
 
-项目包含 94 个单元测试，使用 pytest 运行：
-
 ```bash
-# 安装测试依赖（推荐）
+# 安装测试依赖后运行
 python3 -m pip install -e ".[test]"
-
-# 运行所有测试
 python3 -m pytest
 
 # 运行特定测试类
 python3 -m pytest tests/test_all.py::TestCleanText -v
-
-# 查看测试覆盖率概览
-python3 -m pytest tests/test_all.py --tb=short
 ```
 
-### 测试覆盖范围
-
-| 测试类 | 数量 | 覆盖内容 |
-|--------|------|----------|
-| TestCleanText | 7 | 文本清洗（URL/@/空白） |
-| TestParseBatchResponse | 6 | 批量翻译响应解析 |
-| TestDetectLanguage | 4 | 语言检测 + 容错 |
-| TestTranslationCache | 3 | 缓存读写/损坏恢复 |
-| TestDeepseekTranslate | 5 | 单条翻译 + mock API |
-| TestDeepseekTranslateBatch | 4 | 批量翻译 + mock API + 批大小保护 |
-| TestClusterCalculation | 4 | 聚类数动态计算 |
-| TestParseTwitterDatetime | 3 | 时间戳解析容错 |
-| TestParseDt | 2 | 可视化时间解析 |
-| TestExtractEntities | 4 | Hashtag/Mention 提取 |
-| TestExtractHashtagsFromText | 3 | 文本 Hashtag 提取 |
-| TestGetUserId | 2 | 用户 ID 获取 (mock) |
-| TestGetUserProfile | 2 | 用户信息获取 (mock) |
-| TestTranslateSyncImport | 1 | Import 不崩溃 |
-| TestExportCsvHelpers | 2 | CSV 导出 |
-| TestXcrawlerTextUtils | 2 | 公共文本工具 |
-| TestXcrawlerTimeUtils | 1 | 公共时间工具 |
-| TestJsonStore | 3 | 公共 JSON 读写和 append |
-| TestConfig | 1 | 公共配置覆盖 |
-| TestModels | 2 | 核心数据模型 |
-| TestTranslationRecords | 2 | 翻译记录兼容层 |
-| TestEvidenceService | 4 | evidence id 校验与 HTML 渲染 |
-| TestPrivacyGuard | 3 | 敏感事件识别与脱敏 |
-| TestCli | 8 | 统一 CLI 参数解析、校验和转发 |
-| TestAnalysisRuns | 2 | 分析运行记录与成功/失败状态 |
-| TestSentimentFailures | 2 | 情感分析失败不污染 neutral + token 统计 |
-| TestFetchPlan | 1 | 抓取请求量预估 |
-| TestLLMProvider | 2 | LLM Provider 响应封装 |
-| TestVisualizeEvidence | 2 | HTML 报告证据区与敏感证据隐藏 |
-| TestTranslationService | 3 | 公共翻译服务与 usage metrics |
-| TestXApiClient | 1 | 公共 X API client |
+项目包含 94 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏等模块。
 
 ## 🧱 模块化结构
 
-项目保留 `main.py`、`fetch_more_history.py`、`analyze_*.py` 等旧脚本入口，同时逐步把可复用能力沉到 `xcrawler/` 包中：
-
-```text
-xcrawler/
-├── cli.py                 # 统一 xcrawler 命令入口
-├── config.py              # .env 配置读取与通用覆盖
-├── models.py              # TweetRecord / TranslatedTweet / 分析结果模型
-├── paths.py               # cache 路径与目录创建
-├── clients/
-│   ├── llm.py             # OpenAI/DeepSeek 兼容客户端
-│   └── x_api.py           # X API 用户与推文接口
-├── llm/
-│   └── provider.py        # LLMProvider / DeepSeekProvider 抽象
-├── services/
-│   ├── analysis_runs.py   # 分析运行记录
-│   ├── fetch_plan.py      # 抓取请求量预估
-│   ├── records.py         # translated.json 新旧格式兼容
-│   └── translation.py     # 单条/批量翻译与响应解析
-├── storage/
-│   ├── base.py            # Storage 接口
-│   └── json_store.py      # JSON 读写与目录创建
-└── utils/
-    ├── cli_validation.py  # CLI 数值参数校验
-    ├── text.py            # 文本清洗与语言检测
-    └── time.py            # Twitter 时间解析
-```
+项目保留 `main.py`、`fetch_more_history.py`、`analyze_*.py` 等旧脚本入口，同时逐步把可复用能力沉到 `xcrawler/` 包中。包内结构见上方 [项目结构](#-项目结构) 中的 `xcrawler/` 目录。
 
 `xcrawler` 是当前推荐入口；旧脚本仍然保留，作为兼容已有流程的 legacy 入口。
 
