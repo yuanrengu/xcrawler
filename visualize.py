@@ -286,7 +286,7 @@ def generate_html_report(username, chart_paths, output_dir, data=None, include_s
             charts_html += f'<div class="chart"><h3>{safe_name}</h3><img src="{safe_rel_path}" alt="{safe_name}"></div>\n'
     evidence_html = generate_evidence_sections(data or {}, include_sensitive_events=include_sensitive_events)
 
-    html = f"""<!DOCTYPE html>
+    report_html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -313,7 +313,7 @@ def generate_html_report(username, chart_paths, output_dir, data=None, include_s
 
     path = os.path.join(output_dir, f"{username}_report.html")
     with open(path, 'w', encoding='utf-8') as f:
-        f.write(html)
+        f.write(report_html)
     print(f"   ✅ HTML 报告: {path}")
     return path
 
