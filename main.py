@@ -1,12 +1,12 @@
 from __future__ import annotations
-import os
-import re
-import json
-import argparse
-import requests
 
-from datetime import datetime
+import argparse
+import json
+import os
 from collections import Counter
+from datetime import datetime
+
+import requests
 
 from xcrawler.clients import x_api
 from xcrawler.clients.llm import create_openai_client
@@ -16,14 +16,12 @@ from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.records import make_translated_tweet
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.services.translation import (
-    parse_batch_response,
     translate_batch,
     translate_text,
 )
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
-
 
 _config = load_config()
 
@@ -325,10 +323,10 @@ def main():
             with open(failed_file, 'w', encoding='utf-8') as f:
                 json.dump(failed_list, f, ensure_ascii=False, indent=2)
             print(f"⚠️ {len(failed_list)} 条翻译失败，已保存至: {failed_file}")
-            print(f"   下次运行将自动重试\n")
+            print("   下次运行将自动重试\n")
         
         # 显示语言统计
-        print(f"\n📊 语言分布统计:")
+        print("\n📊 语言分布统计:")
         for lang, count in lang_stats.most_common():
             lang_name = {
                 "ja": "日语", "en": "英语", "zh-cn": "中文", "zh": "中文", 

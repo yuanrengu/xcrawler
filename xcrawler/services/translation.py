@@ -6,7 +6,6 @@ from collections.abc import Callable
 
 from xcrawler.utils.text import detect_language
 
-
 ClientFactory = Callable[[], object]
 
 

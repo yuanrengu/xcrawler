@@ -6,12 +6,11 @@ from typing import Any
 
 from xcrawler.storage.json_store import load_json, save_json
 
-
 Encoder = Callable[[list[str]], Any]
 
 
 def _cache_key(model_name: str, text: str) -> str:
-    payload = f"{model_name}\0{text}".encode("utf-8")
+    payload = f"{model_name}\0{text}".encode()
     return hashlib.sha256(payload).hexdigest()
 
 

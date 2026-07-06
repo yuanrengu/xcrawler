@@ -5,14 +5,18 @@
 2. 抓取比现有数据更早的推文（Backward Fetching），直到到达 TARGET_DATE
 """
 from __future__ import annotations
-import os
+
+import argparse
 import json
+import os
 import shutil
 import time
-import argparse
-import requests
 from datetime import datetime
+
+import requests
+
 from xcrawler.clients import x_api
+from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
 from xcrawler.utils import cli_validation
@@ -99,7 +103,7 @@ def fetch_tweets_generic(user_id, headers, since_id=None, until_id=None, stop_da
                     time.sleep(wait_seconds + 5)
                     response = requests.get(url, headers=headers, params=params, timeout=10)
                 else:
-                    print(f"⚠️ API 限流，请稍后再试")
+                    print("⚠️ API 限流，请稍后再试")
                     break
             
             response.raise_for_status()
@@ -139,13 +143,13 @@ def fetch_tweets_generic(user_id, headers, since_id=None, until_id=None, stop_da
                if int(remaining) % 10 == 0: # 减少日志输出
                     print(f"   剩余配额: {remaining} 次")
                if int(remaining) < 2:
-                    print(f"⚠️ 配额即将耗尽，暂停抓取")
+                    print("⚠️ 配额即将耗尽，暂停抓取")
                     break
             
             # 获取下一页token
             token = data.get("meta", {}).get("next_token")
             if not token:
-                print(f"✅ 已抓取该区间所有推文")
+                print("✅ 已抓取该区间所有推文")
                 break
             params["pagination_token"] = token
             
@@ -189,7 +193,7 @@ def main():
         CACHE_DIR = args.cache_dir
     ensure_dir(CACHE_DIR)
 
-    headers = {"Authorization": f"Bearer {_config.x_bearer_token}"}
+    headers = auth_headers(_config.x_bearer_token)
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
@@ -208,7 +212,7 @@ def main():
     
     if os.path.exists(raw_file):
         try:
-            with open(raw_file, 'r', encoding='utf-8') as f:
+            with open(raw_file, encoding='utf-8') as f:
                 existing_tweets = json.load(f)
             print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
         except json.JSONDecodeError:
@@ -219,7 +223,7 @@ def main():
             print("⚠️ 数据文件损坏，将重新开始抓取")
             existing_tweets = []
     else:
-        print(f"⚠️ 未找到现有数据文件，将从头开始抓取")
+        print("⚠️ 未找到现有数据文件，将从头开始抓取")
 
     # 2. 获取用户ID
     try:
@@ -227,7 +231,7 @@ def main():
         print(f"✅ 用户 ID: {user_id}\n")
     except Exception as e:
         print(f"❌ 无法获取用户ID: {e}")
-        return
+        return 1
 
     # 确定 ID 边界
     newest_id = None
@@ -282,8 +286,6 @@ def main():
     # 4. 阶段二：抓取历史推文 (Backward)
     # ==========================
     new_tweets_backward = []
-    reached_target = False
-    
     # 判断是否还需要抓取历史
     need_history = True
     if oldest_date and oldest_date <= TARGET_DATE:
@@ -307,7 +309,6 @@ def main():
             description="抓取历史推文"
         )
         new_tweets_backward = tweets
-        reached_target = reached
         remaining_pages_quota -= pages_used
         
         if tweets:
@@ -348,6 +349,7 @@ def main():
     print("\n" + "=" * 60)
     print("✅ 所有任务完成！")
     print("=" * 60)
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,16 +1,18 @@
-import os
-import json
+from __future__ import annotations
+
 import argparse
-from sklearn.cluster import KMeans
+import os
 from datetime import datetime
 
 from dotenv import load_dotenv
+from sklearn.cluster import KMeans
+
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
-from xcrawler.services.profile import deepseek_profile_summary
-from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.services.embeddings import encode_texts_with_cache
+from xcrawler.services.profile import deepseek_profile_summary
 from xcrawler.services.records import normalize_translated_tweets
+from xcrawler.storage.json_store import load_json, save_json
 
 _ = load_dotenv()
 _config = load_config()
@@ -94,11 +96,12 @@ def main():
         cluster_text += "\n".join(v[:5]) + "\n"
 
     print("🧠 生成兴趣画像...")
-    llm_client = lambda: create_openai_client(
-        api_key=require_secret("DEEPSEEK_API_KEY", _config.deepseek_api_key, purpose="兴趣画像"),
-        base_url=_config.deepseek_base_url,
-    )
-    profile = deepseek_profile_summary(cluster_text, client_factory=llm_client, model=LLM_MODEL)
+    def _create_client():
+        return create_openai_client(
+            api_key=require_secret("DEEPSEEK_API_KEY", _config.deepseek_api_key, purpose="兴趣画像"),
+            base_url=_config.deepseek_base_url,
+        )
+    profile = deepseek_profile_summary(cluster_text, client_factory=_create_client, model=LLM_MODEL)
     
     # 4. 保存完整分析结果
     result = {

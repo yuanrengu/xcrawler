@@ -6,7 +6,6 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 DEFAULT_TIMEZONE_OFFSET = 8.0

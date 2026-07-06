@@ -1,17 +1,23 @@
-"""
-Hashtag / Mention 网络分析
-从原始推文数据中提取 hashtag 和 @mention，生成统计和可视化
-"""
-import os
-import json
+from __future__ import annotations
+
 import argparse
-from datetime import datetime
+import os
+import re
 from collections import Counter
+from datetime import datetime
 
 from xcrawler.config import load_config
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
 from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 
 _config = load_config()
 
@@ -64,7 +70,6 @@ def extract_entities(raw_tweets):
 
 def extract_hashtags_from_text(raw_tweets):
     """从推文文本中提取 hashtag（entities 可能为空时的后备方案）"""
-    import re
     hashtag_counts = Counter()
     for tweet in raw_tweets:
         text = tweet.get("text", "")
@@ -102,10 +107,6 @@ def print_stats(hashtag_counts, mention_counts, pair_counts, top_n):
 
 def chart_hashtag_bar(hashtag_counts, output_dir, username, top_n=20):
     """生成 hashtag 柱状图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     top = hashtag_counts.most_common(top_n)
     if not top:
         return None
@@ -133,10 +134,6 @@ def chart_hashtag_bar(hashtag_counts, output_dir, username, top_n=20):
 
 def chart_mention_bar(mention_counts, output_dir, username, top_n=20):
     """生成 mention 柱状图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     top = mention_counts.most_common(top_n)
     if not top:
         return None
@@ -235,7 +232,7 @@ def main():
     record_analysis_run(store, complete_analysis_run(run))
 
     print("\n" + "=" * 60)
-    print(f"✅ 分析完成！")
+    print("✅ 分析完成！")
     print(f"   Hashtags: {len(hashtag_counts)} 个")
     print(f"   Mentions: {len(mention_counts)} 个")
     print(f"   Pairs: {len(pair_counts)} 个")

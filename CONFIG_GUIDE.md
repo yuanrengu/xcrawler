@@ -2,7 +2,7 @@
 
 ## 📌 统一配置方案
 
-所有脚本现在都从 `.env` 文件读取 `TARGET_USERNAME`，提高了复用性。
+所有脚本现在都从 `.env` 文件读取 `TARGET_USERNAME`，提高了复用性。推荐使用统一 CLI 入口 `xcrawler`，旧脚本入口仍保留兼容。
 
 ---
 
@@ -24,22 +24,20 @@ TARGET_USERNAME=MiracleHe  # ← 改成你要分析的用户名
 
 ---
 
-### 方法 2：临时环境变量
+### 方法 2：命令行参数（推荐）
+
+使用统一 CLI 的 `--user` 参数临时指定用户，无需修改 `.env`：
 
 ```bash
-# 仅本次运行有效
-TARGET_USERNAME=another_user python3 main.py
-
-# 或者导出环境变量
-export TARGET_USERNAME=another_user
-python3 main.py
-python3 analyze_pro.py
+xcrawler fetch -u another_user
+xcrawler analyze interest -u another_user
+xcrawler analyze behavior -u another_user
 ```
 
 **优点：**
 - ✅ 不修改文件
 - ✅ 适合临时切换用户
-- ✅ 不会影响其他终端会话
+- ✅ 所有命令统一入口
 
 ---
 
@@ -53,7 +51,7 @@ cache/
 ├── MiracleHe_translated.json          # 翻译后的推文
 ├── MiracleHe_analysis.json            # 行为分析
 ├── MiracleHe_interest_profile.json   # 兴趣画像
-└── translation_cache.json          # 翻译缓存（通用）
+└── translation_cache.json           # 翻译缓存（通用）
 ```
 
 **好处：**
@@ -68,13 +66,13 @@ cache/
 ### 示例 1：分析单个用户
 
 ```bash
-# 1. 修改 .env
+# 1. 修改 .env 或使用 --user 参数
 TARGET_USERNAME=MiracleHe
 
-# 2. 依次运行
-python3 main.py              # 抓取并翻译
-python3 analyze_pro.py       # 兴趣画像分析
-python3 analyze_behavior.py  # 行为分析
+# 2. 依次运行（统一 CLI）
+xcrawler fetch -u MiracleHe              # 抓取并翻译
+xcrawler analyze interest -u MiracleHe   # 兴趣画像分析
+xcrawler analyze behavior -u MiracleHe   # 行为分析
 ```
 
 ---
@@ -83,12 +81,12 @@ python3 analyze_behavior.py  # 行为分析
 
 ```bash
 # 用户 A
-TARGET_USERNAME=user_a python3 main.py
-TARGET_USERNAME=user_a python3 analyze_pro.py
+xcrawler fetch -u user_a
+xcrawler analyze interest -u user_a
 
 # 用户 B
-TARGET_USERNAME=user_b python3 main.py
-TARGET_USERNAME=user_b python3 analyze_pro.py
+xcrawler fetch -u user_b
+xcrawler analyze interest -u user_b
 
 # 数据文件：
 # cache/user_a_*.json
@@ -97,28 +95,26 @@ TARGET_USERNAME=user_b python3 analyze_pro.py
 
 ---
 
-### 示例 3：切换用户
+### 示例 3：临时切换用户
 
 ```bash
-# 修改 .env
-vim .env  # 改 TARGET_USERNAME=new_user
-
-# 重新运行
-python3 main.py
-python3 analyze_pro.py
+# 无需修改 .env，直接使用 --user 参数
+xcrawler fetch -u new_user
+xcrawler analyze interest -u new_user
 ```
 
 ---
 
-## ⚙️ 所有支持配置的脚本
+## ⚙️ 所有支持配置的命令
 
-| 脚本 | 功能 | 读取配置 |
+| 命令 | 功能 | 读取配置 |
 |------|------|---------|
-| `main.py` | 抓取并翻译推文 | ✅ `TARGET_USERNAME` |
-| `fetch_more_history.py` | 增量抓取历史数据 | ✅ `TARGET_USERNAME` |
-| `analyze_pro.py` | 兴趣画像分析 | ✅ `TARGET_USERNAME` |
-| `analyze_behavior.py` | 行为分析 | ✅ `TARGET_USERNAME` |
-| `analyze_only.py` | 仅分析（不翻译） | ✅ `TARGET_USERNAME` |
+| `xcrawler fetch` | 抓取并翻译推文 | ✅ `TARGET_USERNAME` |
+| `xcrawler fetch-more` | 增量抓取历史数据 | ✅ `TARGET_USERNAME` |
+| `xcrawler analyze interest` | 兴趣画像分析 | ✅ `TARGET_USERNAME` |
+| `xcrawler analyze behavior` | 行为分析 | ✅ `TARGET_USERNAME` |
+| `xcrawler analyze sentiment` | 情感分析 | ✅ `TARGET_USERNAME` |
+| `xcrawler analyze network` | Hashtag/Mention 网络分析 | ✅ `TARGET_USERNAME` |
 
 ---
 
@@ -145,17 +141,16 @@ TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
 TARGET_USERNAME=my_target_user
 ```
 
-### 2. 临时测试：使用环境变量
+### 2. 临时测试：使用 `--user` 参数
 ```bash
-TARGET_USERNAME=test_user python3 main.py
+xcrawler fetch -u test_user
 ```
 
-### 3. 多用户分析：脚本循环
+### 3. 多用户分析
 ```bash
-for user in user1 user2 user3; do
-    TARGET_USERNAME=$user python3 main.py
-    TARGET_USERNAME=$user python3 analyze_pro.py
-done
+xcrawler fetch -u user1
+xcrawler fetch -u user2
+xcrawler fetch -u user3
 ```
 
 ---
@@ -178,7 +173,7 @@ done
 
 ## 🎯 总结
 
-现在所有脚本都支持通过 `.env` 配置用户名，复用性大大提高！
+现在所有脚本都支持通过 `.env` 或 `--user` 参数配置用户名，复用性大大提高！
 
 **核心优势：**
 - ✅ 一次配置，全局生效
@@ -186,4 +181,4 @@ done
 - ✅ 向后兼容
 - ✅ 灵活切换
 
-修改 `.env` 中的 `TARGET_USERNAME` 即可开始使用！
+修改 `.env` 中的 `TARGET_USERNAME` 或使用 `xcrawler -u <用户名>` 即可开始使用！

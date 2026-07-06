@@ -1,11 +1,13 @@
-import os
-import json
-import shutil
+from __future__ import annotations
+
 import argparse
+import json
+import os
+import shutil
 
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
-from xcrawler.paths import translation_cache_path, ensure_dir
+from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
 from xcrawler.services.translation import translate_batch, translate_text
 from xcrawler.storage.json_store import load_json, save_json
@@ -26,12 +28,12 @@ def load_data(username, cache_dir):
 
     raw_tweets = []
     if os.path.exists(raw_file):
-        with open(raw_file, "r", encoding="utf-8") as f:
+        with open(raw_file, encoding="utf-8") as f:
             raw_tweets = json.load(f)
 
     translated_data = []
     if os.path.exists(translated_file):
-        with open(translated_file, "r", encoding="utf-8") as f:
+        with open(translated_file, encoding="utf-8") as f:
             translated_data = normalize_translated_tweets(json.load(f))
 
     return raw_tweets, translated_data, translated_file
@@ -56,7 +58,7 @@ def main():
     ensure_dir(cache_dir)
 
     print("=" * 60)
-    print(f"🔄 翻译同步工具 (Translation Sync)")
+    print("🔄 翻译同步工具 (Translation Sync)")
     print(f"🎯 目标用户: {username}")
     print(f"📁 缓存目录: {cache_dir}")
     if args.force:
@@ -115,7 +117,7 @@ def main():
 
     if not to_process:
         print("🎉 所有推文都已翻译，无需更新！")
-        return
+        return 0
 
     print(f"📝 发现 {len(to_process)} 条推文需要翻译")
 

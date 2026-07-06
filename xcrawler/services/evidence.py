@@ -3,8 +3,8 @@ from __future__ import annotations
 import html
 from typing import Any
 
-from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.privacy_guard import redact_record
+from xcrawler.services.records import normalize_translated_tweets
 
 
 class EvidenceValidationError(ValueError):

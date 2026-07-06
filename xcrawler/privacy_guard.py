@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 SENSITIVE_EVENT_CATEGORIES = {
     "birthday_mentions",
     "relationship_events",

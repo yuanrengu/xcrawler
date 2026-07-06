@@ -1,12 +1,20 @@
-import os
-import json
+from __future__ import annotations
+
 import argparse
+import json
+import os
+from collections import Counter
 from datetime import datetime, timedelta
-from collections import defaultdict, Counter
 
 from xcrawler.config import load_config
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import (
+    complete_analysis_run,
+    create_analysis_run,
+    fail_analysis_run,
+    partial_analysis_run,
+    record_analysis_run,
+)
 from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
@@ -306,7 +314,7 @@ def main():
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
-    print(f"📊 行为分析: 时间模式 + 生活事件")
+    print("📊 行为分析: 时间模式 + 生活事件")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60 + "\n")
 
@@ -315,14 +323,14 @@ def main():
     translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
     
     if not os.path.exists(raw_file) or not os.path.exists(translated_file):
-        print(f"❌ 找不到数据文件，请先运行 main.py 抓取数据")
+        print("❌ 找不到数据文件，请先运行 main.py 抓取数据")
         return 1
     
     print("📂 加载数据...")
-    with open(raw_file, 'r', encoding='utf-8') as f:
+    with open(raw_file, encoding='utf-8') as f:
         raw_tweets = json.load(f)
     
-    with open(translated_file, 'r', encoding='utf-8') as f:
+    with open(translated_file, encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
 
     store = JsonStore(CACHE_DIR)
@@ -430,11 +438,11 @@ def main():
     for hour, count in time_analysis['top_active_hours']:
         print(f"   {hour} - {count}条推文")
     
-    print(f"\n📆 最活跃星期:")
+    print("\n📆 最活跃星期:")
     for day, count in time_analysis['top_active_weekdays']:
         print(f"   {day} - {count}条推文")
     
-    print(f"\n⏱️ 时段分布:")
+    print("\n⏱️ 时段分布:")
     for period, count in time_analysis['time_period_counts'].items():
         percentage = (count / time_analysis['total_tweets'] * 100) if time_analysis['total_tweets'] > 0 else 0
         print(f"   {period}: {count}条 ({percentage:.1f}%)")
