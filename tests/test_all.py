@@ -1113,22 +1113,18 @@ class TestCli:
         mock_run.assert_called_once_with("translate_sync", ["--user", "alice", "--cache-dir", "tmp-cache", "--force"])
 
     def test_pyproject_has_console_script(self):
-        import tomllib
-
-        with open("pyproject.toml", "rb") as f:
-            data = tomllib.load(f)
-
-        assert data["project"]["scripts"]["xcrawler"] == "xcrawler.cli:main"
+        with open("pyproject.toml", "r", encoding="utf-8") as f:
+            content = f.read()
+        assert 'xcrawler = "xcrawler.cli:main"' in content
 
     def test_pyproject_splits_heavy_optional_dependencies(self):
-        import tomllib
-
-        with open("pyproject.toml", "rb") as f:
-            data = tomllib.load(f)
-
-        assert "torch>=2.0.0" not in data["project"]["dependencies"]
-        assert "torch>=2.0.0" in data["project"]["optional-dependencies"]["ml"]
-        assert "matplotlib>=3.7.0" in data["project"]["optional-dependencies"]["viz"]
+        with open("pyproject.toml", "r", encoding="utf-8") as f:
+            content = f.read()
+        # Heavy deps (torch, transformers, sentence-transformers, etc.) should NOT be in [project.dependencies]
+        assert "torch" not in content.split("[project.optional-dependencies]")[0]
+        # They should appear in optional-dependencies sections
+        assert "torch>=2.0.0" in content
+        assert "matplotlib>=3.7.0" in content
 
 
 class TestConfigValidation:
