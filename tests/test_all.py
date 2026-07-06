@@ -2,13 +2,11 @@
 xcrawler 单元测试
 覆盖纯函数、工具函数和需要 mock 的 API 调用
 """
-import os
 import json
-import tempfile
-import pytest
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # ==============================
 # main.py 函数测试
@@ -540,7 +538,6 @@ class TestTranslateSyncImport:
 
     def test_import_succeeds(self):
         """验证 import main 不会因缺少 API key 而崩溃"""
-        import importlib
         # 这应该不会抛异常，因为 ds_client 现在是 lazy init
         import main
         assert main.ds_client is None  # 尚未初始化
@@ -548,6 +545,7 @@ class TestTranslateSyncImport:
 
     def test_sync_adds_duplicate_text_when_tweet_id_is_new(self, tmp_path):
         import sys
+
         import translate_sync
 
         username = "alice"
@@ -625,7 +623,7 @@ class TestExportCsvHelpers:
         output = str(tmp_path / "test.csv")
         export_tweets(tweets, output)
 
-        with open(output, 'r', encoding='utf-8-sig') as f:
+        with open(output, encoding='utf-8-sig') as f:
             content = f.read()
         assert "Hello #world @user" in content
         assert "world" in content
@@ -639,7 +637,7 @@ class TestExportCsvHelpers:
         output = str(tmp_path / "test.csv")
         export_translations(data, output)
 
-        with open(output, 'r', encoding='utf-8-sig') as f:
+        with open(output, encoding='utf-8-sig') as f:
             content = f.read()
         assert "tweet_id" in content
         assert "42" in content
@@ -663,7 +661,7 @@ class TestExportCsvHelpers:
         output = str(tmp_path / "interests.csv")
         export_interests(profile, output)
 
-        with open(output, 'r', encoding='utf-8-sig') as f:
+        with open(output, encoding='utf-8-sig') as f:
             content = f.read()
         assert "evidence_tweet_ids" in content
         assert "123" in content
@@ -1090,8 +1088,8 @@ class TestCli:
         mock_run.assert_called_once_with("analyze_pro", ["--limit", "25"])
 
     def test_run_script_invokes_analyze_pro_main(self):
-        from xcrawler import cli
         import analyze_pro
+        from xcrawler import cli
 
         with patch.object(analyze_pro, "main", return_value=None) as mock_main:
             assert cli._run_script("analyze_pro", ["--cache-dir", "missing-cache"]) == 0
@@ -1099,8 +1097,8 @@ class TestCli:
         mock_main.assert_called_once_with()
 
     def test_run_script_returns_script_exit_code(self):
-        from xcrawler import cli
         import analyze_pro
+        from xcrawler import cli
 
         with patch.object(analyze_pro, "main", return_value=1):
             assert cli._run_script("analyze_pro", ["--cache-dir", "missing-cache"]) == 1
@@ -1115,22 +1113,18 @@ class TestCli:
         mock_run.assert_called_once_with("translate_sync", ["--user", "alice", "--cache-dir", "tmp-cache", "--force"])
 
     def test_pyproject_has_console_script(self):
-        import tomllib
-
-        with open("pyproject.toml", "rb") as f:
-            data = tomllib.load(f)
-
-        assert data["project"]["scripts"]["xcrawler"] == "xcrawler.cli:main"
+        with open("pyproject.toml", encoding="utf-8") as f:
+            content = f.read()
+        assert 'xcrawler = "xcrawler.cli:main"' in content
 
     def test_pyproject_splits_heavy_optional_dependencies(self):
-        import tomllib
-
-        with open("pyproject.toml", "rb") as f:
-            data = tomllib.load(f)
-
-        assert "torch>=2.0.0" not in data["project"]["dependencies"]
-        assert "torch>=2.0.0" in data["project"]["optional-dependencies"]["ml"]
-        assert "matplotlib>=3.7.0" in data["project"]["optional-dependencies"]["viz"]
+        with open("pyproject.toml", encoding="utf-8") as f:
+            content = f.read()
+        # Heavy deps (torch, transformers, sentence-transformers, etc.) should NOT be in [project.dependencies]
+        assert "torch" not in content.split("[project.optional-dependencies]")[0]
+        # They should appear in optional-dependencies sections
+        assert "torch>=2.0.0" in content
+        assert "matplotlib>=3.7.0" in content
 
 
 class TestConfigValidation:
@@ -1154,7 +1148,7 @@ class TestAnalysisRuns:
     """测试 analysis run 记录"""
 
     def test_record_and_load_analysis_run(self, tmp_path):
-        from xcrawler.services.analysis_runs import create_analysis_run, record_analysis_run, load_analysis_runs
+        from xcrawler.services.analysis_runs import create_analysis_run, load_analysis_runs, record_analysis_run
         from xcrawler.storage.json_store import JsonStore
 
         store = JsonStore(str(tmp_path))

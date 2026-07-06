@@ -35,7 +35,7 @@
 ## 🚀 使用方法
 
 ### 前提条件
-1. 已运行 `main.py` 抓取并翻译了推文数据
+1. 已运行 `xcrawler fetch` 抓取并翻译了推文数据
 2. 数据文件位于 `cache/` 目录：
    - `{username}_raw_tweets.json`
    - `{username}_translated.json`
@@ -44,11 +44,11 @@
 
 ```bash
 # 基础分析（只包含时间分析）
-python3 analyze_behavior.py
+xcrawler analyze behavior
 
 # 完整分析（需要先安装依赖）
 pip3 install openai python-dotenv
-python3 analyze_behavior.py
+xcrawler analyze behavior
 ```
 
 ### 输出示例
@@ -177,7 +177,7 @@ CACHE_DIR = "cache"                        # 缓存目录
 - 解决：启用虚拟环境后运行 `python3 -m pip install -e ".[all]"`
 
 **问题：没有数据文件**
-- 解决：先运行 `python3 main.py` 抓取数据
+- 解决：先运行 `xcrawler fetch` 抓取数据
 
 **问题：事件检测失败**
 - 解决：检查 `.env` 文件中的 `DEEPSEEK_API_KEY` 是否配置正确
@@ -185,7 +185,7 @@ CACHE_DIR = "cache"                        # 缓存目录
 ## 🔄 与其他脚本的关系
 
 ```
-main.py              ← 数据抓取和翻译（必须先运行）
+xcrawler fetch         ← 数据抓取和翻译（必须先运行）
     ↓
     ├─ cache/{username}_raw_tweets.json      ← 原始推文
     ├─ cache/{username}_translated.json      ← 翻译结果

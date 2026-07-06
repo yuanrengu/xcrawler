@@ -248,7 +248,10 @@ $RECYCLE.BIN/
 *.tflite
 
 # Dataset files (通常很大)
-*.csv
+# CSV 导出文件（项目生成的 CSV 在 cache/csv/ 下）
+cache/csv/
+cache/*.csv
+*.tmp.csv
 *.tsv
 *.json.gz
 *.parquet

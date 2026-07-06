@@ -1,12 +1,12 @@
+from __future__ import annotations
+
 """
 CSV 导出工具
 将缓存数据导出为 CSV 格式，方便 Excel 打开
 """
-import os
-import json
-import csv
 import argparse
-from datetime import datetime
+import csv
+import os
 
 from xcrawler.config import load_config
 from xcrawler.services.records import normalize_translated_tweets

@@ -1,19 +1,35 @@
+from __future__ import annotations
+
 """
 情感分析脚本
 对翻译后的推文进行情感打分（正/中/负），生成趋势图
 """
-import os
-import json
 import argparse
-from datetime import datetime
+import json
+import os
+import re
 from collections import Counter, defaultdict
+from datetime import datetime
 
 from xcrawler.config import load_config
 from xcrawler.llm.provider import DeepSeekProvider
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, partial_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import (
+    complete_analysis_run,
+    create_analysis_run,
+    partial_analysis_run,
+    record_analysis_run,
+)
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
 from xcrawler.utils import cli_validation
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 
 _config = load_config()
 
@@ -23,8 +39,6 @@ CACHE_DIR = _config.cache_dir
 
 def parse_sentiment_response(response: str, expected_count: int) -> list[str]:
     """Parse a fully numbered sentiment response, skipping preamble lines."""
-    import re
-
     lines = [line.strip() for line in response.splitlines() if line.strip()]
     if not lines:
         return []
@@ -106,10 +120,6 @@ def create_provider():
 
 def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, tz_offset):
     """生成情感时间趋势图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     # 按月聚合
     monthly = defaultdict(lambda: Counter())
     for item, sent in zip(translated_data, sentiments):
@@ -152,10 +162,6 @@ def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, 
 
 def chart_sentiment_pie(sentiments, output_dir, username):
     """生成情感分布饼图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     counts = Counter(sentiments)
     labels = ['Positive', 'Neutral', 'Negative', 'Unknown']
     sizes = [counts.get('positive', 0), counts.get('neutral', 0), counts.get('negative', 0), counts.get('unknown', 0)]
@@ -195,7 +201,7 @@ def main():
         print("   请先运行 main.py")
         return 1
 
-    with open(translated_file, 'r', encoding='utf-8') as f:
+    with open(translated_file, encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
 
     sentiment_inputs = [item for item in translated_data if item.get("translated")]
@@ -235,7 +241,7 @@ def main():
     # 统计
     counts = Counter(sentiments)
     total = len(sentiments)
-    print(f"\n📊 情感分布:")
+    print("\n📊 情感分布:")
     print(f"   ✅ Positive: {counts.get('positive', 0)} ({counts.get('positive', 0)/total*100:.1f}%)")
     print(f"   😐 Neutral:  {counts.get('neutral', 0)} ({counts.get('neutral', 0)/total*100:.1f}%)")
     print(f"   ❌ Negative: {counts.get('negative', 0)} ({counts.get('negative', 0)/total*100:.1f}%)")
@@ -259,7 +265,7 @@ def main():
             print(f"   • {t[:60]}{'...' if len(t) > 60 else ''}")
 
     # 生成图表
-    print(f"\n🎨 生成图表...")
+    print("\n🎨 生成图表...")
     tz_offset = _config.timezone_offset
     chart_sentiment_timeline(sentiment_inputs, sentiments, output_dir, TARGET_USERNAME, tz_offset)
     chart_sentiment_pie(sentiments, output_dir, TARGET_USERNAME)
@@ -296,7 +302,8 @@ def main():
     print("\n" + "=" * 60)
     print("✅ 情感分析完成！")
     print("=" * 60 + "\n")
+    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main() or 0)
+    raise SystemExit(main())

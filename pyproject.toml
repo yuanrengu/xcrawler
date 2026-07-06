@@ -12,6 +12,17 @@ license = { text = "MIT" }
 authors = [
   { name = "yuanrengu" }
 ]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Utilities",
+]
 dependencies = [
   "requests>=2.31.0",
   "openai>=1.0.0",
@@ -78,3 +89,12 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 exclude = ["cache/", "cache_backup/", "__pycache__/", ".git/"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["cache", "cache_backup", "__pycache__", ".git", "xcrawler.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501", "E402", "E731", "E741", "F401"]

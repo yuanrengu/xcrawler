@@ -7,7 +7,6 @@ from uuid import uuid4
 from xcrawler.models import AnalysisRun
 from xcrawler.storage.base import Storage
 
-
 ANALYSIS_RUNS_KEY = "analysis_runs.json"
 
 

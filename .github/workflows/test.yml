@@ -9,19 +9,28 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
+
+      - name: Lint with ruff
+        run: |
+          python -m pip install ruff
+          ruff check xcrawler/ tests/ main.py fetch_more_history.py analyze_pro.py analyze_behavior.py analyze_sentiment.py analyze_network.py analyze_only.py visualize.py translate_sync.py export_csv.py
 
       - name: Run tests
         run: python -m pytest

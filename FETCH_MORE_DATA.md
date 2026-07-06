@@ -9,7 +9,7 @@
 ### 运行增量脚本
 
 ```bash
-python3 fetch_more_history.py
+xcrawler fetch-more
 ```
 
 该脚本会：
@@ -36,7 +36,7 @@ TARGET_DATE=2024-01-01
 
 ```bash
 # 增加页数以获取更多推文（每页 100 条）
-python3 main.py --pages 30
+xcrawler fetch --pages 30
 ```
 
 或通过统一 CLI：
@@ -93,11 +93,11 @@ Twitter API 有严格限制：
 
 ```bash
 # 1. 翻译新推文（自动增量，跳过已翻译内容）
-python3 translate_sync.py
+xcrawler translate
 
 # 2. 重新进行各项分析
-python3 analyze_behavior.py
-python3 analyze_pro.py
+xcrawler analyze behavior
+xcrawler analyze interest
 ```
 
 ---
@@ -125,15 +125,15 @@ cp cache_backup/* cache/
 **日常更新**（保留现有数据，补充新推文）：
 
 ```bash
-python3 fetch_more_history.py
-python3 translate_sync.py
-python3 analyze_behavior.py
+xcrawler fetch-more
+xcrawler translate
+xcrawler analyze behavior
 ```
 
 **首次全量抓取**：
 
 ```bash
-python3 main.py --pages 30
+xcrawler fetch --pages 30
 ```
 
 ---

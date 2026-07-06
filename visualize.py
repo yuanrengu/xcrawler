@@ -1,18 +1,27 @@
+from __future__ import annotations
+
 """
 数据可视化脚本
 从缓存数据生成图表：24小时热力图、语言分布、兴趣标签、时间趋势
 """
-import os
-import json
 import argparse
 import html
-from datetime import datetime
+import os
 from collections import Counter
+from datetime import datetime, timedelta
 
 from xcrawler.config import load_config
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils.time import parse_twitter_datetime
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 
 _config = load_config()
 
@@ -52,11 +61,6 @@ def load_data(username, cache_dir):
 
 def chart_hourly_heatmap(raw_tweets, output_dir, username):
     """生成24小时发推热力图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    import numpy as np
-
     tz_offset = _config.timezone_offset
 
     hour_counts = Counter()
@@ -66,7 +70,6 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
         if "created_at" not in tweet:
             continue
         dt_utc = _parse_dt(tweet["created_at"])
-        from datetime import timedelta
         dt_local = dt_utc + timedelta(hours=tz_offset)
         hour_counts[dt_local.hour] += 1
         weekday_counts[dt_local.weekday()] += 1
@@ -105,11 +108,6 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
 
 def chart_weekday_bar(raw_tweets, output_dir, username):
     """生成星期分布柱状图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-    from datetime import timedelta
-
     tz_offset = _config.timezone_offset
     weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weekday_counts = Counter()
@@ -130,12 +128,6 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
     ax.set_title(f'@{username} - Weekday vs Weekend', fontsize=14)
     ax.grid(axis='y', alpha=0.3)
 
-    # 添加 Workday/Weekend 图例
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='#42A5F5', label='Weekday'),
-                       Patch(facecolor='#FF7043', label='Weekend')]
-    ax.legend(handles=legend_elements)
-
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_weekday.png")
     plt.savefig(path, dpi=150)
@@ -146,10 +138,6 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
 
 def chart_language_pie(translated_data, output_dir, username):
     """生成语言分布饼图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     lang_counts = Counter()
     lang_names = {
         "ja": "Japanese", "en": "English", "zh-cn": "Chinese", "zh": "Chinese",
@@ -182,10 +170,6 @@ def chart_language_pie(translated_data, output_dir, username):
 
 def chart_interest_tags(profile_data, output_dir, username):
     """生成兴趣标签条形图"""
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     if not profile_data or "interests" not in profile_data:
         return None
 
@@ -207,12 +191,6 @@ def chart_interest_tags(profile_data, output_dir, username):
     ax.set_title(f'@{username} - Interest Profile', fontsize=14)
     ax.set_xlim(0, 1)
     ax.grid(axis='x', alpha=0.3)
-
-    # 图例
-    from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='#1976D2', label='Core'),
-                       Patch(facecolor='#90CAF9', label='Peripheral')]
-    ax.legend(handles=legend_elements, loc='lower right')
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_interests.png")
@@ -373,7 +351,8 @@ def main():
     print(f"✅ 可视化完成！共生成 {len(chart_paths)} 张图表")
     print(f"📄 报告: {report_path}")
     print("=" * 60 + "\n")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

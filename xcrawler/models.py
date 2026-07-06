@@ -13,7 +13,7 @@ class TweetRecord:
     raw: dict[str, Any] | None = None
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "TweetRecord":
+    def from_api(cls, data: dict[str, Any]) -> TweetRecord:
         return cls(
             id=str(data.get("id", "")),
             text=data.get("text", ""),
@@ -35,7 +35,7 @@ class TranslatedTweet:
     created_at: str
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TranslatedTweet":
+    def from_dict(cls, data: dict[str, Any]) -> TranslatedTweet:
         return cls(
             tweet_id=data.get("tweet_id"),
             original=data.get("original", ""),
@@ -58,7 +58,7 @@ class InterestSignal:
     evidence_tweet_ids: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "InterestSignal":
+    def from_dict(cls, data: dict[str, Any]) -> InterestSignal:
         return cls(
             tag=data.get("tag", ""),
             level=data.get("level", "peripheral"),
@@ -81,7 +81,7 @@ class LifeEvent:
     evidence_tweet_ids: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LifeEvent":
+    def from_dict(cls, data: dict[str, Any]) -> LifeEvent:
         return cls(
             category=data.get("category", ""),
             description=data.get("description", ""),

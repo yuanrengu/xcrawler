@@ -1,13 +1,22 @@
+from __future__ import annotations
+
+import argparse
+import json
+
 # analyze_pro.py
 import os
-import json
-import argparse
-from typing import List, Dict, Any
+import re
+from typing import Any
 
 from xcrawler.config import load_config
 from xcrawler.llm.provider import DeepSeekProvider
+from xcrawler.services.analysis_runs import (
+    complete_analysis_run,
+    create_analysis_run,
+    fail_analysis_run,
+    record_analysis_run,
+)
 from xcrawler.services.evidence import validate_interest_evidence
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore
@@ -36,7 +45,7 @@ def _get_provider() -> DeepSeekProvider:
     return provider
 
 
-def _ensure_interest_evidence_fields(result: Dict[str, Any]) -> Dict[str, Any]:
+def _ensure_interest_evidence_fields(result: dict[str, Any]) -> dict[str, Any]:
     if isinstance(result, dict):
         for interest in result.get("interests", []):
             if isinstance(interest, dict):
@@ -120,9 +129,9 @@ Step 5：提炼支持关键词或典型表达
 # =========================
 
 def analyze_user_interest(
-    texts: List[str],
+    texts: list[str],
     temperature: float = 0.2
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     分析用户兴趣画像（少数据优化版）
 
@@ -148,7 +157,6 @@ def analyze_user_interest(
 
     content = response.content
 
-    import re
     result = None
 
     # 尝试直接解析
@@ -176,7 +184,7 @@ def analyze_user_interest(
 # 数据加载与分析
 # =========================
 
-def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> List[str]:
+def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> list[str]:
     """
     加载已翻译的推文数据
     
@@ -195,7 +203,7 @@ def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> Li
             f"请先运行 main.py 抓取并翻译数据"
         )
     
-    with open(translated_file, 'r', encoding='utf-8') as f:
+    with open(translated_file, encoding='utf-8') as f:
         data = json.load(f)
     
     # 提取翻译后的文本，兼容旧格式 translated.json（缺少 tweet_id 时补 None）。
@@ -222,11 +230,11 @@ def load_translated_records(cache_dir: str = "cache", username: str = None) -> l
             f"请先运行 main.py 抓取并翻译数据"
         )
 
-    with open(translated_file, 'r', encoding='utf-8') as f:
+    with open(translated_file, encoding='utf-8') as f:
         return normalize_translated_tweets(json.load(f))
 
 
-def save_analysis_result(result: Dict[str, Any], cache_dir: str = "cache", username: str = None):
+def save_analysis_result(result: dict[str, Any], cache_dir: str = "cache", username: str = None):
     """
     保存分析结果
     
