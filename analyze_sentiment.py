@@ -5,23 +5,24 @@
 import os
 import json
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter, defaultdict
 
-from dotenv import load_dotenv
+from xcrawler.config import load_config
 from xcrawler.llm.provider import DeepSeekProvider
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore
 from xcrawler.utils import cli_validation
-_ = load_dotenv()
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
-CACHE_DIR = "cache"
+_config = load_config()
+
+TARGET_USERNAME = _config.target_username
+CACHE_DIR = _config.cache_dir
 
 
 def parse_sentiment_response(response: str, expected_count: int) -> list[str]:
-    """Parse a fully numbered sentiment response."""
+    """Parse a fully numbered sentiment response, skipping preamble lines."""
     import re
 
     lines = [line.strip() for line in response.splitlines() if line.strip()]
@@ -29,15 +30,19 @@ def parse_sentiment_response(response: str, expected_count: int) -> list[str]:
         return []
 
     parsed: dict[int, str] = {}
+    saw_numbered_line = False
     for line in lines:
         match = re.match(r"^(?:\[(\d+)\]|(\d+)[\.\):：])\s*[\.\):：]?\s*(positive|neutral|negative)\s*$", line, re.I)
-        if not match:
-            return []
-        idx = int(match.group(1) or match.group(2))
-        sentiment = match.group(3).lower()
-        if idx < 1 or idx > expected_count or idx in parsed:
-            return []
-        parsed[idx] = sentiment
+        if match:
+            saw_numbered_line = True
+            idx = int(match.group(1) or match.group(2))
+            sentiment = match.group(3).lower()
+            if idx < 1 or idx > expected_count or idx in parsed:
+                return []
+            parsed[idx] = sentiment
+
+    if not saw_numbered_line:
+        return []
 
     if set(parsed) != set(range(1, expected_count + 1)):
         return []
@@ -90,12 +95,12 @@ def batch_sentiment(texts: list[str], llm, model: str) -> tuple[list[str], dict[
 
 
 def create_provider():
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = _config.deepseek_api_key
     if not api_key:
         raise RuntimeError("未检测到 DEEPSEEK_API_KEY，无法执行情感分析")
     return DeepSeekProvider(
         api_key=api_key,
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        base_url=_config.deepseek_base_url
     )
 
 
@@ -113,7 +118,7 @@ def chart_sentiment_timeline(translated_data, sentiments, output_dir, username, 
         except ValueError:
             try:
                 dt = datetime.strptime(item["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, KeyError):
                 continue
         month_key = dt.strftime("%Y-%m")
         monthly[month_key][sent] += 1
@@ -203,7 +208,7 @@ def main():
 
     # 初始化 LLM
     provider = create_provider()
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
+    model = _config.llm_model
     store = JsonStore(CACHE_DIR)
     run = create_analysis_run(
         username=TARGET_USERNAME,
@@ -255,7 +260,7 @@ def main():
 
     # 生成图表
     print(f"\n🎨 生成图表...")
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
+    tz_offset = _config.timezone_offset
     chart_sentiment_timeline(sentiment_inputs, sentiments, output_dir, TARGET_USERNAME, tz_offset)
     chart_sentiment_pie(sentiments, output_dir, TARGET_USERNAME)
 

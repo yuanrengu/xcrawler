@@ -3,7 +3,6 @@ import json
 import shutil
 import argparse
 
-from dotenv import load_dotenv
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
 from xcrawler.paths import translation_cache_path, ensure_dir
@@ -12,7 +11,6 @@ from xcrawler.services.translation import translate_batch, translate_text
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils.text import clean_text, detect_language
 
-_ = load_dotenv()
 _config = load_config()
 
 CACHE_DIR = _config.cache_dir
@@ -47,15 +45,11 @@ def _make_client():
 
 
 def main():
-    args = argparse.Namespace(
-        user=None, cache_dir=None, force=False,
-    )
-    # Re-parse from sys.argv
-    _parser = argparse.ArgumentParser(description="翻译同步/重翻工具")
-    _parser.add_argument("-u", "--user", help="目标用户名")
-    _parser.add_argument("--cache-dir", help="缓存目录")
-    _parser.add_argument("--force", action="store_true", help="强制重新翻译")
-    args = _parser.parse_args()
+    args = argparse.ArgumentParser(description="翻译同步/重翻工具")
+    args.add_argument("-u", "--user", help="目标用户名")
+    args.add_argument("--cache-dir", help="缓存目录")
+    args.add_argument("--force", action="store_true", help="强制重新翻译")
+    args = args.parse_args()
 
     username = args.user or TARGET_USERNAME
     cache_dir = args.cache_dir or CACHE_DIR

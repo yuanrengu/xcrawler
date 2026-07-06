@@ -3,6 +3,8 @@ import json
 import argparse
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
+
+from xcrawler.config import load_config
 from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, partial_analysis_run, record_analysis_run
 from xcrawler.services.evidence import validate_life_event_evidence
@@ -11,11 +13,11 @@ from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore
 from xcrawler.utils.time import parse_twitter_datetime
 
+_config = load_config()
+
 # 尝试导入可选依赖
 try:
     from xcrawler.llm.provider import DeepSeekProvider
-    from dotenv import load_dotenv
-    _ = load_dotenv()
     AI_AVAILABLE = True
 except ImportError:
     AI_AVAILABLE = False
@@ -27,18 +29,18 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # ======================
 # 配置
 # ======================
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取
-CACHE_DIR = "cache"
+TARGET_USERNAME = _config.target_username
+CACHE_DIR = _config.cache_dir
 
 if AI_AVAILABLE:
-    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-    LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+    DEEPSEEK_API_KEY = _config.deepseek_api_key
+    DEEPSEEK_BASE_URL = _config.deepseek_base_url
+    LLM_MODEL = _config.llm_model
     llm_provider = None
 else:
     DEEPSEEK_API_KEY = None
-    DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-    LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
+    DEEPSEEK_BASE_URL = _config.deepseek_base_url
+    LLM_MODEL = _config.llm_model
     llm_provider = None
 
 LLM_METRICS = {"calls": 0, "total_tokens": 0}
@@ -63,7 +65,7 @@ def _get_llm_provider():
 def analyze_time_patterns(raw_tweets):
     """分析发推时间模式"""
     # UTC+N 时区偏移，默认+8（中国）
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
+    tz_offset = _config.timezone_offset
     JST_OFFSET = timedelta(hours=tz_offset)
     tz_label = f"UTC+{int(tz_offset)}" if tz_offset == int(tz_offset) else f"UTC+{tz_offset}"
     
@@ -234,6 +236,20 @@ def _normalize_life_events(life_events):
         normalized[category] = normalized_events
     return normalized
 
+
+_MAX_LIFE_EVENTS_IN_PROMPT = 20
+
+
+def _limit_life_events(life_events):
+    """Limit life events to avoid overflowing LLM context."""
+    if not isinstance(life_events, dict):
+        return life_events
+    limited = {}
+    for category, events in life_events.items():
+        limited[category] = (events or [])[:_MAX_LIFE_EVENTS_IN_PROMPT]
+    return limited
+
+
 def generate_behavior_summary(time_analysis, life_events):
     """生成行为特征总结"""
     if not AI_AVAILABLE:
@@ -250,8 +266,8 @@ def generate_behavior_summary(time_analysis, life_events):
 - 最活跃星期: {', '.join([f"{d} ({c}条)" for d, c in time_analysis['top_active_weekdays']])}
 - 时段分布: {json.dumps(time_analysis['time_period_counts'], ensure_ascii=False)}
 
-**生活事件**：
-{json.dumps(life_events, ensure_ascii=False, indent=2)}
+**生活事件**（最多显示 20 条，避免超出 token 预算）：
+{json.dumps(_limit_life_events(life_events), ensure_ascii=False, indent=2)}
 
 **请输出**：
 1. 作息特征（2-3句话）

@@ -360,6 +360,7 @@ class TestFetchMoreHistory:
 
             tweets, reached, pages = fetch_more_history.fetch_tweets_generic(
                 "user-id",
+                {"Authorization": "Bearer test-token"},
                 stop_date=datetime(2024, 1, 1),
                 max_pages_limit=1,
             )
@@ -861,14 +862,14 @@ class TestEvidenceService:
         translated = [{
             "tweet_id": "123",
             "original": "email me at user@example.com",
-            "translated": "我的电话是 13800138000",
+            "translated": "我的电话是 138-0013-8000",
             "detected_language": "zh",
             "created_at": "2024-01-01",
         }]
         html = render_evidence_html(["123"], build_evidence_map(translated), redact=True)
 
         assert "敏感原文已隐藏" in html
-        assert "13800138000" not in html
+        assert "138-0013-8000" not in html
 
     def test_validate_life_event_evidence_filters_missing_ids(self):
         from xcrawler.services.evidence import validate_life_event_evidence
@@ -914,9 +915,9 @@ class TestPrivacyGuard:
     def test_redact_text_masks_email_and_phone(self):
         from xcrawler.privacy_guard import redact_text
 
-        text = redact_text("邮箱 user@example.com 电话 13800138000")
+        text = redact_text("邮箱 user@example.com 电话 138-0013-8000")
         assert "user@example.com" not in text
-        assert "13800138000" not in text
+        assert "138-0013-8000" not in text
 
     def test_sanitize_life_events_hides_sensitive_by_default(self):
         from xcrawler.privacy_guard import sanitize_life_events
@@ -1254,11 +1255,11 @@ class TestSentimentFailures:
         assert sentiments == ["unknown", "unknown"]
         assert stats["failed_batches"] == 1
 
-    def test_sentiment_response_rejects_extra_text(self):
+    def test_sentiment_response_skips_preamble(self):
         from analyze_sentiment import parse_sentiment_response
 
         response = "结果如下：\n[1] positive\n[2] negative"
-        assert parse_sentiment_response(response, 2) == []
+        assert parse_sentiment_response(response, 2) == ["positive", "negative"]
 
 
 class TestFetchPlan:

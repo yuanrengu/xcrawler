@@ -8,13 +8,14 @@ import csv
 import argparse
 from datetime import datetime
 
-from dotenv import load_dotenv
+from xcrawler.config import load_config
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import load_json
-_ = load_dotenv()
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
-CACHE_DIR = "cache"
+_config = load_config()
+
+TARGET_USERNAME = _config.target_username
+CACHE_DIR = _config.cache_dir
 
 
 def parse_args():

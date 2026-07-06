@@ -8,15 +8,15 @@ import argparse
 from datetime import datetime
 from collections import Counter
 
-from dotenv import load_dotenv
+from xcrawler.config import load_config
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
 from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
 
-_ = load_dotenv()
+_config = load_config()
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
-CACHE_DIR = "cache"
+TARGET_USERNAME = _config.target_username
+CACHE_DIR = _config.cache_dir
 
 
 def parse_args():
@@ -201,7 +201,7 @@ def main():
         print("   请先运行 main.py 抓取数据")
         return
 
-    model = os.getenv("LLM_MODEL", "deepseek-chat")
+    model = _config.llm_model
     store = JsonStore(CACHE_DIR)
     run = create_analysis_run(
         username=TARGET_USERNAME,

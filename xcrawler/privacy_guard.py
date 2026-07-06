@@ -30,7 +30,8 @@ def is_sensitive_event(category: str, description: str = "") -> bool:
 
 def redact_text(text: str) -> str:
     redacted = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[邮箱已隐藏]", text)
-    redacted = re.sub(r"(?<!\d)(?:\+?\d[\d\s-]{7,}\d)(?!\d)", "[电话已隐藏]", redacted)
+    # 要求至少一个分隔符（- 或空格），避免匹配纯数字 ID
+    redacted = re.sub(r"(?<!\d)(?:\(\d{2,4}\)[\s\-]?)?\d{3,4}(?:[\s\-]\d{3,4}){1,2}(?!\d)", "[电话已隐藏]", redacted)
     redacted = re.sub(r"(住址|地址|小区|宿舍)[:：]?\s*\S+", r"\1[已隐藏]", redacted)
     return redacted
 

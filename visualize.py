@@ -9,14 +9,15 @@ import html
 from datetime import datetime
 from collections import Counter
 
-from dotenv import load_dotenv
+from xcrawler.config import load_config
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils.time import parse_twitter_datetime
-_ = load_dotenv()
 
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
-CACHE_DIR = "cache"
+_config = load_config()
+
+TARGET_USERNAME = _config.target_username
+CACHE_DIR = _config.cache_dir
 
 
 def _parse_dt(dt_str: str) -> datetime:
@@ -56,7 +57,7 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
+    tz_offset = _config.timezone_offset
 
     hour_counts = Counter()
     weekday_counts = Counter()
@@ -109,7 +110,7 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
     import matplotlib.pyplot as plt
     from datetime import timedelta
 
-    tz_offset = float(os.getenv("TIMEZONE_OFFSET", "8"))
+    tz_offset = _config.timezone_offset
     weekday_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     weekday_counts = Counter()
 

@@ -7,19 +7,17 @@
 from __future__ import annotations
 import os
 import json
+import shutil
 import time
 import argparse
 import requests
 from datetime import datetime
-from dotenv import load_dotenv
-
 from xcrawler.clients import x_api
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
 from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
 
-load_dotenv()
 _config = load_config()
 
 # 配置
@@ -43,18 +41,15 @@ def parse_args():
     return parser.parse_args()
 
 
-HEADERS = {
-    "Authorization": f"Bearer {X_BEARER_TOKEN}"
-}
-
-def get_user_id(username):
+def get_user_id(username, headers):
     """获取用户ID"""
-    return x_api.get_user_id(username, HEADERS, request_get=requests.get)
+    return x_api.get_user_id(username, headers, request_get=requests.get)
 
-def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, max_pages_limit=MAX_PAGES, description="抓取"):
+def fetch_tweets_generic(user_id, headers, since_id=None, until_id=None, stop_date=None, max_pages_limit=MAX_PAGES, description="抓取"):
     """
     通用抓取函数
     :param user_id: 用户ID
+    :param headers: HTTP 请求头
     :param since_id: 获取比此ID更新的推文（向后/未来）
     :param until_id: 获取比此ID更早的推文（向前/历史）
     :param stop_date: 如果遇到早于此日期的推文，停止抓取 (仅用于 Backward 模式)
@@ -86,8 +81,8 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
 
     for page in range(max_pages_limit):
         try:
-            response = requests.get(url, headers=HEADERS, params=params, timeout=10)
-            
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+
             # 检查限流
             if response.status_code == 429:
                 reset_time = response.headers.get('x-rate-limit-reset')
@@ -102,7 +97,7 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
                         print("⚠️ 等待时间过长，跳过本次抓取")
                         break
                     time.sleep(wait_seconds + 5)
-                    response = requests.get(url, headers=HEADERS, params=params, timeout=10)
+                    response = requests.get(url, headers=headers, params=params, timeout=10)
                 else:
                     print(f"⚠️ API 限流，请稍后再试")
                     break
@@ -176,7 +171,7 @@ def fetch_tweets_generic(user_id, since_id=None, until_id=None, stop_date=None, 
     return all_tweets, reached_target, pages_fetched
 
 def main():
-    global TARGET_USERNAME, MAX_PAGES, TARGET_DATE, REQUEST_INTERVAL, CACHE_DIR, HEADERS
+    global TARGET_USERNAME, MAX_PAGES, TARGET_DATE, REQUEST_INTERVAL, CACHE_DIR
 
     args = parse_args()
     if args.user:
@@ -194,8 +189,7 @@ def main():
         CACHE_DIR = args.cache_dir
     ensure_dir(CACHE_DIR)
 
-    # 更新 HEADERS（user 可能改变了 token）
-    HEADERS = {"Authorization": f"Bearer {X_BEARER_TOKEN}"}
+    headers = {"Authorization": f"Bearer {_config.x_bearer_token}"}
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
@@ -218,6 +212,10 @@ def main():
                 existing_tweets = json.load(f)
             print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
         except json.JSONDecodeError:
+            backup_path = raw_file + ".bak"
+            if existing_tweets:
+                shutil.copy2(raw_file, backup_path)
+                print(f"📋 已备份损坏数据: {backup_path}")
             print("⚠️ 数据文件损坏，将重新开始抓取")
             existing_tweets = []
     else:
@@ -225,7 +223,7 @@ def main():
 
     # 2. 获取用户ID
     try:
-        user_id = get_user_id(TARGET_USERNAME)
+        user_id = get_user_id(TARGET_USERNAME, headers)
         print(f"✅ 用户 ID: {user_id}\n")
     except Exception as e:
         print(f"❌ 无法获取用户ID: {e}")
@@ -263,7 +261,7 @@ def main():
     if newest_id:
         print("📥 阶段一: 检查新发布的推文...")
         tweets, _, pages_used = fetch_tweets_generic(
-            user_id, 
+            user_id, headers,
             since_id=newest_id, 
             max_pages_limit=remaining_pages_quota,
             description="抓取最新推文"
@@ -302,7 +300,7 @@ def main():
     if need_history:
         print(f"📥 阶段二: 补充历史推文... (剩余配额: {remaining_pages_quota} 页)")
         tweets, reached, pages_used = fetch_tweets_generic(
-            user_id,
+            user_id, headers,
             until_id=oldest_id,  # 从已知最早的往前
             stop_date=TARGET_DATE,
             max_pages_limit=remaining_pages_quota,

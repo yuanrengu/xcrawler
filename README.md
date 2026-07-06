@@ -100,6 +100,11 @@ TIMEZONE_OFFSET=8
 # DeepSeek API 配置 (可选，默认值如下)
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
+
+# OpenAI 备选（用于 analyze_pro 的专业兴趣画像）
+# 如果不设置，则默认使用 DeepSeek
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_BASE_URL=https://api.openai.com
 ```
 
 **获取方式：**
@@ -408,7 +413,7 @@ xcrawler/
 │   ├── {username}_network.json
 │   ├── {username}_profile.json
 │   ├── {username}_sentiment.json
-│   ├── {username}_analysis_runs.json
+│   ├── analysis_runs.json
 │   └── translation_cache.json
 ├── cache_backup/                 # 全量抓取备份目录
 ├── tests/
@@ -829,10 +834,6 @@ python3 -m pip install -e ".[all]"
 
 完整依赖列表见 [`pyproject.toml`](pyproject.toml)。
 
-## 🛠️ 便捷脚本
-
-`refetch_data.sh` 提供全量/增量两种抓取模式，自动从 `.env` 读取配置。详细说明（输出示例、使用策略、故障恢复等）见下方 [便捷脚本详解](#%EF%B8%8F-%E4%BE%BF%E6%8D%B7%E8%84%9A%E6%9C%AC%E8%AF%A6%E8%A7%A3)。
-
 ## 🔍 使用场景
 
 ### 1. 市场营销
@@ -948,7 +949,7 @@ python3 -m pytest
 python3 -m pytest tests/test_all.py::TestCleanText -v
 ```
 
-项目包含 94 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏等模块。
+项目包含 113 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏等模块。
 
 ## 🧱 模块化结构
 

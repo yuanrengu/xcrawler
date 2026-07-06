@@ -5,7 +5,6 @@ import json
 import argparse
 import requests
 
-from dotenv import load_dotenv
 from datetime import datetime
 from collections import Counter
 
@@ -26,7 +25,6 @@ from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
 
-_ = load_dotenv()
 _config = load_config()
 
 # ======================
@@ -74,7 +72,8 @@ def _get_ds_client():
 # embed_model moved to main()
 
 
-HEADERS = x_api.auth_headers(X_BEARER_TOKEN) if X_BEARER_TOKEN else {}
+# Deferred: HEADERS built in validate_runtime_config() after token validation
+HEADERS: dict[str, str] = {}
 
 # 创建缓存目录
 ensure_dir(CACHE_DIR)

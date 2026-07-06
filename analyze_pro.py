@@ -4,8 +4,8 @@ import json
 import argparse
 from typing import List, Dict, Any
 
-from dotenv import load_dotenv
-from xcrawler.llm.provider import DeepSeekProvider, LLMResponse
+from xcrawler.config import load_config
+from xcrawler.llm.provider import DeepSeekProvider
 from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, fail_analysis_run, record_analysis_run
 from xcrawler.services.records import normalize_translated_tweets
@@ -17,15 +17,14 @@ from xcrawler.utils import cli_validation
 # 初始化
 # =========================
 
-load_dotenv()
+_config = load_config()
 
-API_KEY = os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
-BASE_URL = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com")
-MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")  # 从环境变量读取目标用户名
+API_KEY = _config.deepseek_api_key or _config.openai_api_key
+BASE_URL = _config.deepseek_base_url if _config.deepseek_api_key else _config.openai_base_url
+MODEL = _config.llm_model
+TARGET_USERNAME = _config.target_username
 
 provider: DeepSeekProvider | None = None
-LAST_LLM_RESPONSE: LLMResponse | None = None
 
 
 def _get_provider() -> DeepSeekProvider:
@@ -129,17 +128,15 @@ def analyze_user_interest(
 
     :param texts: 已翻译成中文的推文列表
     :param temperature: 模型温度，建议 0.1 ~ 0.3
-    :return: 结构化兴趣画像 dict
+    :return: (结构化兴趣画像 dict, total_tokens: int | None)
     """
 
     if not texts or len(texts) < 5:
         raise ValueError("文本数量过少，至少需要 5 条以上才能进行兴趣分析")
 
     joined_text = "\n".join(f"- {t}" for t in texts)
-
     prompt = PROMPT_TEMPLATE.format(user_text=joined_text)
 
-    global LAST_LLM_RESPONSE
     response = _get_provider().chat(
         [
             {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。请务必输出合法的 JSON 格式。"},
@@ -148,24 +145,31 @@ def analyze_user_interest(
         model=MODEL,
         temperature=temperature
     )
-    LAST_LLM_RESPONSE = response
 
     content = response.content
 
     import re
+    result = None
+
+    # 尝试直接解析
     try:
-        # 尝试直接解析
-        return _ensure_interest_evidence_fields(json.loads(content))
+        result = _ensure_interest_evidence_fields(json.loads(content))
     except json.JSONDecodeError:
-        # 尝试从 markdown 代码块提取
+        pass
+
+    # 从 markdown 代码块提取
+    if result is None:
         match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
         if match:
             try:
-                return _ensure_interest_evidence_fields(json.loads(match.group(1)))
+                result = _ensure_interest_evidence_fields(json.loads(match.group(1)))
             except json.JSONDecodeError:
                 pass
-        
+
+    if result is None:
         raise RuntimeError(f"模型返回的不是合法 JSON：\n{content}")
+
+    return result, response.total_tokens
 
 
 # =========================
@@ -309,12 +313,11 @@ def main():
             config={"provider": "deepseek"},
         )
         
-        result = analyze_user_interest(texts, temperature=args.temperature)
+        result, total_tokens = analyze_user_interest(texts, temperature=args.temperature)
         result = validate_interest_evidence(result, translated_records, require_evidence=True)
         result["analysis_run_id"] = run.id
         run.llm_calls = 1
-        if LAST_LLM_RESPONSE:
-            run.total_tokens = LAST_LLM_RESPONSE.total_tokens
+        run.total_tokens = total_tokens
         record_analysis_run(store, complete_analysis_run(run))
         
         # 3. 显示结果

@@ -45,7 +45,7 @@ def main():
     translated_data_raw = load_json(translated_file)
     if translated_data_raw is None:
         print(f"❌ 找不到翻译文件: {translated_file}")
-        return 0
+        return 1
     translated_data = normalize_translated_tweets(translated_data_raw)
     
     print("📂 加载已有的翻译数据...")

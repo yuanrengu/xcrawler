@@ -18,7 +18,9 @@ class AppConfig:
     cache_dir: str = "cache"
     x_bearer_token: str | None = None
     deepseek_api_key: str | None = None
+    openai_api_key: str | None = None
     deepseek_base_url: str = "https://api.deepseek.com"
+    openai_base_url: str = "https://api.openai.com"
     llm_model: str = "deepseek-chat"
     target_date: datetime = datetime(2024, 1, 1)
     timezone_offset: float = DEFAULT_TIMEZONE_OFFSET
@@ -35,7 +37,9 @@ def load_config() -> AppConfig:
         target_username=os.getenv("TARGET_USERNAME", "MiracleHe"),
         x_bearer_token=os.getenv("X_BEARER_TOKEN"),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
+        openai_api_key=os.getenv("OPENAI_API_KEY"),
         deepseek_base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com"),
         llm_model=os.getenv("LLM_MODEL", "deepseek-chat"),
         target_date=target_date,
         timezone_offset=float(os.getenv("TIMEZONE_OFFSET", str(int(DEFAULT_TIMEZONE_OFFSET)))),
