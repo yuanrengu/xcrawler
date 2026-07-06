@@ -188,7 +188,7 @@ def main():
     if not os.path.exists(translated_file):
         print(f"❌ 找不到翻译文件: {translated_file}")
         print("   请先运行 main.py")
-        return
+        return 1
 
     with open(translated_file, 'r', encoding='utf-8') as f:
         translated_data = normalize_translated_tweets(json.load(f))
@@ -199,7 +199,7 @@ def main():
 
     if len(texts) < 5:
         print("⚠️ 数据量过少，无法有效分析")
-        return
+        return 1
 
     # 初始化 LLM
     provider = create_provider()
@@ -294,4 +294,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

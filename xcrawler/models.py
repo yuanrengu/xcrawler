@@ -80,6 +80,16 @@ class LifeEvent:
     sensitive: bool = False
     evidence_tweet_ids: list[str] = field(default_factory=list)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LifeEvent":
+        return cls(
+            category=data.get("category", ""),
+            description=data.get("description", ""),
+            confidence=data.get("confidence"),
+            sensitive=data.get("sensitive", False),
+            evidence_tweet_ids=list(data.get("evidence_tweet_ids", [])),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

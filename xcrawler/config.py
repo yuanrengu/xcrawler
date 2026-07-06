@@ -42,16 +42,6 @@ def load_config() -> AppConfig:
     )
 
 
-def apply_common_overrides(config: AppConfig, args) -> AppConfig:
-    if getattr(args, "user", None):
-        config.target_username = args.user
-    if getattr(args, "cache_dir", None):
-        config.cache_dir = args.cache_dir
-    if getattr(args, "model", None):
-        config.llm_model = args.model
-    return config
-
-
 def is_missing_secret(value: str | None) -> bool:
     if value is None:
         return True

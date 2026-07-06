@@ -1003,6 +1003,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - [QUICK_START.md](QUICK_START.md) - 快速开始指南
 - [FETCH_MORE_DATA.md](FETCH_MORE_DATA.md) - 增量抓取说明
 - [BEHAVIOR_ANALYSIS.md](BEHAVIOR_ANALYSIS.md) - 行为分析功能说明
+- [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
 - [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南：开发环境、PR 流程、测试要求
 - [SECURITY.md](SECURITY.md) - 安全与隐私报告说明
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - 发布前检查清单

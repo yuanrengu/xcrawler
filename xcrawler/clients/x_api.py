@@ -58,7 +58,7 @@ def get_user_profile(
             "tweet_count": metrics.get("tweet_count", 0),
             "listed_count": metrics.get("listed_count", 0),
         }
-    except Exception:
+    except (requests.exceptions.RequestException, ValueError):
         return None
 
 

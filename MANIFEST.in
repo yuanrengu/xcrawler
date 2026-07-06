@@ -1,0 +1,15 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include SECURITY.md
+include RELEASE_CHECKLIST.md
+include QUICK_START.md
+include CONFIG_GUIDE.md
+include BEHAVIOR_ANALYSIS.md
+include FETCH_MORE_DATA.md
+include TARGET_DATE_EXAMPLES.md
+include ANALYSIS_SUMMARY.md
+include .env.example
+include assets/*.png assets/*.svg
+recursive-include xcrawler *.py
+recursive-include tests *.py

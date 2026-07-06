@@ -17,7 +17,7 @@ from xcrawler.clients import x_api
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
 from xcrawler.utils import cli_validation
-from xcrawler.utils.time import parse_twitter_datetime as _parse_twitter_datetime
+from xcrawler.utils.time import parse_twitter_datetime
 
 load_dotenv()
 _config = load_config()
@@ -42,10 +42,6 @@ def parse_args():
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     return parser.parse_args()
 
-
-def parse_twitter_datetime(dt_str: str) -> datetime:
-    """解析 Twitter API 返回的时间戳，兼容有/无微秒格式"""
-    return _parse_twitter_datetime(dt_str)
 
 HEADERS = {
     "Authorization": f"Bearer {X_BEARER_TOKEN}"
@@ -332,7 +328,7 @@ def main():
         
         # 合并去重：按 ID 保留最新的一条
         seen: dict[str, dict] = {}
-        for t in combined:
+        for t in all_new_tweets:
             tid = t.get("id")
             if tid is None:
                 continue

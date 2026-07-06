@@ -5,6 +5,7 @@ import importlib
 import sys
 from collections.abc import Sequence
 
+from xcrawler import __version__
 from xcrawler.utils import cli_validation
 
 
@@ -43,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="xcrawler",
         description="X/Twitter 用户画像分析统一 CLI",
     )
-    parser.add_argument("--version", action="version", version="xcrawler 0.3.0")
+    parser.add_argument("--version", action="version", version=f"xcrawler {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 

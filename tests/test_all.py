@@ -48,51 +48,51 @@ class TestCleanText:
 
 
 class TestParseBatchResponse:
-    """测试 _parse_batch_response 批量响应解析"""
+    """测试 parse_batch_response 批量响应解析"""
 
     def test_standard_format(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "[1] 你好世界\n[2] 这是测试\n[3] 第三条"
-        result = _parse_batch_response(resp, 3)
+        result = parse_batch_response(resp, 3)
         assert result == ["你好世界", "这是测试", "第三条"]
 
     def test_number_dot_format(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "1. 你好世界\n2. 这是测试"
-        result = _parse_batch_response(resp, 2)
+        result = parse_batch_response(resp, 2)
         assert result == ["你好世界", "这是测试"]
 
     def test_number_paren_format(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "1) 你好世界\n2) 这是测试"
-        result = _parse_batch_response(resp, 2)
+        result = parse_batch_response(resp, 2)
         assert result == ["你好世界", "这是测试"]
 
     def test_empty_lines_skipped(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "[1] 你好\n\n[2] 世界\n\n"
-        result = _parse_batch_response(resp, 2)
+        result = parse_batch_response(resp, 2)
         assert result == ["你好", "世界"]
 
     def test_count_mismatch_fallback(self):
         """当解析结果数量不对时，回退到按行返回"""
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "你好世界\n这是测试"
-        result = _parse_batch_response(resp, 2)
+        result = parse_batch_response(resp, 2)
         assert len(result) == 2
         assert "你好世界" in result
 
     def test_with_colon_separator(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
         resp = "[1]：你好\n[2]：世界"
-        result = _parse_batch_response(resp, 2)
+        result = parse_batch_response(resp, 2)
         assert result == ["你好", "世界"]
 
     def test_numbered_response_with_extra_text_is_invalid(self):
-        from main import _parse_batch_response
+        from xcrawler.services.translation import parse_batch_response
 
         resp = "以下是翻译：\n[1] 你好\n[2] 世界"
-        assert _parse_batch_response(resp, 2) == []
+        assert parse_batch_response(resp, 2) == []
 
 
 class TestDetectLanguage:
@@ -716,20 +716,6 @@ class TestJsonStore:
         assert store.load_json("runs.json") == [{"id": "1"}, {"id": "2"}]
 
 
-class TestConfig:
-    """测试 xcrawler.config"""
-
-    def test_apply_common_overrides(self):
-        from argparse import Namespace
-        from xcrawler.config import AppConfig, apply_common_overrides
-
-        config = AppConfig()
-        args = Namespace(user="alice", cache_dir="tmp-cache", model="deepseek-test")
-        updated = apply_common_overrides(config, args)
-
-        assert updated.target_username == "alice"
-        assert updated.cache_dir == "tmp-cache"
-        assert updated.llm_model == "deepseek-test"
 
 
 class TestModels:
@@ -1378,7 +1364,7 @@ class TestVisualizeEvidence:
 class TestTranslationService:
     """测试 xcrawler.services.translation"""
 
-    def test_parse_batch_response_module(self):
+    def testparse_batch_response_module(self):
         from xcrawler.services.translation import parse_batch_response
         resp = "[1] 你好\n[2] 世界"
         assert parse_batch_response(resp, 2) == ["你好", "世界"]

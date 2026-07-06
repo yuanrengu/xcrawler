@@ -14,7 +14,6 @@ authors = [
 ]
 dependencies = [
   "requests>=2.31.0",
-  "tqdm>=4.66.0",
   "openai>=1.0.0",
   "python-dotenv>=1.0.0",
   "langdetect>=1.0.9"
@@ -71,3 +70,11 @@ include = ["xcrawler*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["cache/", "cache_backup/", "__pycache__/", ".git/"]

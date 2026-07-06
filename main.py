@@ -129,13 +129,6 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
     )
 
 
-def _parse_batch_response(response: str, expected_count: int) -> list[str]:
-    """
-    解析批量翻译响应，提取 [N] 开头的翻译结果。
-    兼容多种格式：[1] xxx、1. xxx、1) xxx 等。
-    """
-    return parse_batch_response(response, expected_count)
-
 def deepseek_profile_summary(cluster_text):
     """生成用户画像，支持重试（委托给 xcrawler.services.profile）"""
     from xcrawler.services.profile import deepseek_profile_summary as _impl

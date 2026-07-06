@@ -182,13 +182,28 @@ def detect_life_events(translated_data):
         result = r.content
         
         # 尝试解析 JSON
-        import re
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```', result, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group(1))
-        else:
-            # 尝试直接解析
+        # 优先直接解析
+        try:
             return json.loads(result)
+        except json.JSONDecodeError:
+            pass
+        # 从 code block 中提取完整 JSON（支持嵌套结构）
+        fence = result.find("```json")
+        if fence >= 0:
+            start = result.find("{", fence)
+            if start >= 0:
+                depth = 0
+                for i in range(start, len(result)):
+                    if result[i] == "{":
+                        depth += 1
+                    elif result[i] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(result[start:i + 1])
+                            except json.JSONDecodeError:
+                                break
+        raise ValueError(f"无法从 LLM 响应中提取 JSON: {result[:200]}")
     except Exception as e:
         print(f"❌ 生活事件检测失败: {str(e)}")
         return None
