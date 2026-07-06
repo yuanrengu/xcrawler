@@ -1113,12 +1113,12 @@ class TestCli:
         mock_run.assert_called_once_with("translate_sync", ["--user", "alice", "--cache-dir", "tmp-cache", "--force"])
 
     def test_pyproject_has_console_script(self):
-        with open("pyproject.toml", "r", encoding="utf-8") as f:
+        with open("pyproject.toml", encoding="utf-8") as f:
             content = f.read()
         assert 'xcrawler = "xcrawler.cli:main"' in content
 
     def test_pyproject_splits_heavy_optional_dependencies(self):
-        with open("pyproject.toml", "r", encoding="utf-8") as f:
+        with open("pyproject.toml", encoding="utf-8") as f:
             content = f.read()
         # Heavy deps (torch, transformers, sentence-transformers, etc.) should NOT be in [project.dependencies]
         assert "torch" not in content.split("[project.optional-dependencies]")[0]
