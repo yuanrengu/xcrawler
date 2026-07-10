@@ -174,6 +174,20 @@ def fetch_tweets_generic(user_id, headers, since_id=None, until_id=None, stop_da
     
     return all_tweets, reached_target, pages_fetched
 
+
+def merge_tweets(existing_tweets, new_tweets):
+    """合并已有和新增推文，按 ID 去重并按时间倒序返回。"""
+    seen: dict[str, dict] = {}
+    for tweet in [*existing_tweets, *new_tweets]:
+        tweet_id = tweet.get("id")
+        if tweet_id is None:
+            continue
+        tweet_id = str(tweet_id)
+        if tweet_id not in seen or tweet.get("created_at", "") >= seen[tweet_id].get("created_at", ""):
+            seen[tweet_id] = tweet
+    return sorted(seen.values(), key=lambda tweet: tweet.get("created_at", ""), reverse=True)
+
+
 def main():
     global TARGET_USERNAME, MAX_PAGES, TARGET_DATE, REQUEST_INTERVAL, CACHE_DIR
 
@@ -325,15 +339,8 @@ def main():
     if all_new_tweets:
         print(f"📊 总计新增抓取: {len(all_new_tweets)} 条")
         
-        # 合并去重：按 ID 保留最新的一条
-        seen: dict[str, dict] = {}
-        for t in all_new_tweets:
-            tid = t.get("id")
-            if tid is None:
-                continue
-            if tid not in seen or t.get("created_at", "") > seen[tid].get("created_at", ""):
-                seen[tid] = t
-        final_list = sorted(seen.values(), key=lambda t: t.get("created_at", ""), reverse=True)
+        # 合并已有和新增数据，避免增量抓取覆盖历史记录。
+        final_list = merge_tweets(existing_tweets, all_new_tweets)
 
         print(f"💾 保存总推文数: {len(final_list)} 条")
         

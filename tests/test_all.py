@@ -4,6 +4,7 @@ xcrawler 单元测试
 """
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -335,6 +336,57 @@ class TestParseTwitterDatetime:
 
 class TestFetchMoreHistory:
     """测试增量历史抓取边界"""
+
+    def test_merge_tweets_retains_existing_and_deduplicates(self):
+        from fetch_more_history import merge_tweets
+
+        existing = [
+            {"id": "2", "text": "old copy", "created_at": "2024-01-02T00:00:00Z"},
+            {"id": "1", "text": "existing history", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        new = [
+            {"id": "3", "text": "new tweet", "created_at": "2024-01-03T00:00:00Z"},
+            {"id": "2", "text": "refreshed copy", "created_at": "2024-01-02T00:00:00Z"},
+            {"id": "0", "text": "older history", "created_at": "2023-12-31T00:00:00Z"},
+        ]
+
+        merged = merge_tweets(existing, new)
+
+        assert [tweet["id"] for tweet in merged] == ["3", "2", "1", "0"]
+        assert merged[1]["text"] == "refreshed copy"
+
+    def test_main_incremental_save_keeps_existing_tweets(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        username = "testuser"
+        raw_file = tmp_path / f"{username}_raw_tweets.json"
+        raw_file.write_text(json.dumps([
+            {"id": "2", "text": "existing latest", "created_at": "2025-01-02T00:00:00Z"},
+            {"id": "1", "text": "existing history", "created_at": "2025-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user=username,
+            pages=2,
+            target_date=None,
+            interval=0,
+            cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {"Authorization": "Bearer test"})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
+
+        fetch_calls = MagicMock(side_effect=[
+            ([{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}], False, 1),
+            ([{"id": "0", "text": "older history", "created_at": "2024-12-31T00:00:00Z"}], False, 1),
+        ])
+        monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", fetch_calls)
+
+        assert fetch_more_history.main() == 0
+
+        saved = json.loads(raw_file.read_text(encoding="utf-8"))
+        assert [tweet["id"] for tweet in saved] == ["3", "2", "1", "0"]
+        assert fetch_calls.call_count == 2
 
     @patch("fetch_more_history.requests.get")
     def test_stop_date_filters_within_page(self, mock_get):
