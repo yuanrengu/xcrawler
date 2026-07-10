@@ -13,6 +13,7 @@ from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.embeddings import encode_texts_with_cache
+from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.records import make_translated_tweet
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.services.translation import (
@@ -26,7 +27,7 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
@@ -104,6 +105,7 @@ def _new_translation_metrics() -> dict[str, int | str]:
 
 
 translation_metrics: dict[str, int | str] = _new_translation_metrics()
+llm_call_recorder: LLMCallRecorder | None = None
 
 
 def load_translation_cache():
@@ -128,6 +130,8 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
         max_retries=MAX_RETRIES,
         metrics=translation_metrics,
         cache_context=_translation_cache_context(),
+        call_recorder=llm_call_recorder,
+        provider_name="deepseek",
     )
 
 
@@ -153,13 +157,22 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         fallback_translate=deepseek_translate,
         metrics=translation_metrics,
         cache_context=_translation_cache_context(),
+        call_recorder=llm_call_recorder,
+        provider_name="deepseek",
     )
 
 
 def deepseek_profile_summary(cluster_text):
     """生成用户画像，支持重试（委托给 xcrawler.services.profile）"""
     from xcrawler.services.profile import deepseek_profile_summary as _impl
-    return _impl(cluster_text, client_factory=_get_ds_client, model=LLM_MODEL, max_retries=MAX_RETRIES)
+    return _impl(
+        cluster_text,
+        client_factory=_get_ds_client,
+        model=LLM_MODEL,
+        max_retries=MAX_RETRIES,
+        call_recorder=llm_call_recorder,
+        provider_name="deepseek",
+    )
 
 # ======================
 # X API
@@ -210,7 +223,7 @@ def validate_runtime_config(*, no_translate: bool) -> None:
 # 主流程
 # ======================
 def main():
-    global translation_cache, translation_metrics, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR, ANALYSIS_LIMIT
+    global translation_cache, translation_metrics, llm_call_recorder, TARGET_USERNAME, MAX_PAGES, BATCH_SIZE, LLM_MODEL, CACHE_DIR, ANALYSIS_LIMIT
 
     # 应用 CLI 参数（覆盖 .env 默认值）
     args = parse_args()
@@ -227,6 +240,11 @@ def main():
     if args.analysis_limit is not None:
         ANALYSIS_LIMIT = args.analysis_limit
     os.makedirs(CACHE_DIR, exist_ok=True)
+    llm_call_recorder = LLMCallRecorder(
+        JsonStore(CACHE_DIR),
+        pricing=_config.llm_pricing,
+        username=TARGET_USERNAME,
+    )
 
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
@@ -352,6 +370,15 @@ def main():
             f"   缓存命中/未命中: {translation_metrics['cache_hits']} / "
             f"{translation_metrics['cache_misses']}"
         )
+        print()
+        call_summary = llm_call_recorder.summary()
+        if call_summary["calls"]:
+            print(
+                f"   调用级记录: {call_summary['successful_calls']} 成功 / "
+                f"{call_summary['failed_calls']} 失败"
+            )
+            if call_summary["estimated_cost"]:
+                print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
         print()
 
         # 保存失败列表供下次重试

@@ -51,7 +51,9 @@ cache/
 ├── MiracleHe_translated.json          # 翻译后的推文
 ├── MiracleHe_analysis.json            # 行为分析
 ├── MiracleHe_interest_profile.json   # 兴趣画像
-└── translation_cache.json           # 翻译缓存（通用）
+├── analysis_runs.json                # 分析任务级运行记录（多用户共享）
+├── llm_calls.json                    # LLM 调用级记录（多用户共享，不含正文）
+└── translation_cache.json            # 翻译缓存（通用）
 ```
 
 **好处：**

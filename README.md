@@ -101,6 +101,10 @@ TIMEZONE_OFFSET=8
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
 
+# 可选：按模型配置每百万 input/output token 的 USD 单价，仅用于本地成本估算
+# 项目不内置可能过期的供应商价格，请以供应商当前价格为准
+# LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
+
 # OpenAI 备选（用于 analyze_pro 的专业兴趣画像）
 # 如果不设置，则默认使用 DeepSeek
 OPENAI_API_KEY=your_openai_api_key
@@ -382,6 +386,7 @@ xcrawler/
 │   ├── services/
 │   │   ├── analysis_runs.py      # 分析运行记录
 │   │   ├── fetch_plan.py         # 抓取请求量预估
+│   │   ├── llm_calls.py          # LLM 调用级观测、失败率与成本汇总
 │   │   ├── records.py            # 翻译记录兼容层
 │   │   └── translation.py        # 单条/批量翻译
 │   ├── storage/
@@ -416,6 +421,7 @@ xcrawler/
 │   ├── {username}_profile.json
 │   ├── {username}_sentiment.json
 │   ├── analysis_runs.json
+│   ├── llm_calls.json
 │   └── translation_cache.json
 ├── cache_backup/                 # 全量抓取备份目录
 ├── tests/
@@ -955,7 +961,7 @@ python3 -m pytest
 python3 -m pytest tests/test_all.py::TestCleanText -v
 ```
 
-项目包含 113 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏等模块。
+项目包含 144 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测等模块。
 
 ## 🧱 模块化结构
 
@@ -965,9 +971,9 @@ python3 -m pytest tests/test_all.py::TestCleanText -v
 
 ### 存储与 Provider
 
-当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口，并可记录 `analysis_runs.json` 运行元数据，包括用户、分析类型、模型、参数、输入范围、开始/完成时间、运行状态、耗时、LLM 调用次数、token 用量、失败类型和失败批次。主抓取流程的翻译阶段会在 `{username}_analysis.json` 的 `stats` 中记录翻译 LLM 调用次数、token 用量和失败批次。后续如果需要长期、多用户、多次增量分析，可在 `Storage` 接口下增加 SQLite Store，用于查询运行历史、模型参数和结果版本。
+当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口。`analysis_runs.json` 记录任务级元数据，包括用户、分析类型、模型、参数、输入范围、运行状态、耗时、LLM 调用次数、token 用量和失败批次；`llm_calls.json` 记录每次 LLM 尝试的 provider、model、操作类型、时间、耗时、token、状态、错误和可选成本，并通过 `analysis_run_id` 关联兴趣、行为和情感分析。调用记录不会保存 Prompt 或响应正文。后续如果需要长期、多用户、多次增量分析，可在稳定的数据结构上增加 SQLite Store。
 
-LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析已接入 Provider，可记录 provider、模型、token 用量和 latency；翻译批处理仍保留专用路径，但已补充执行计划、缓存、失败列表、批大小校验和 usage metrics。
+LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析通过观测包装层记录成功与失败；翻译批处理保留专用路径，但每次批量、单条回退和重试也会写入调用记录。设置 `LLM_PRICING_JSON` 后可按模型估算成本；不设置时成本字段为 `null`，避免使用过期价格误导用户。
 
 ## 🔄 更新日志
 

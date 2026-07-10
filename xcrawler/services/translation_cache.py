@@ -78,7 +78,7 @@ def ensure_translation_cache(cache: dict[str, Any]) -> dict[str, Any]:
 
 
 def _cache_key(text: str, context: TranslationCacheContext) -> str:
-    payload = f"{context.canonical_json()}\0{text}".encode("utf-8")
+    payload = f"{context.canonical_json()}\0{text}".encode()
     return hashlib.sha256(payload).hexdigest()
 
 

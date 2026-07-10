@@ -18,6 +18,7 @@ from xcrawler.services.analysis_runs import (
     partial_analysis_run,
     record_analysis_run,
 )
+from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
@@ -222,6 +223,17 @@ def main():
         input_range={"translated_records": len(translated_data), "texts": len(texts), "batch_size": 20},
         config={"provider": provider.name},
     )
+    call_recorder = LLMCallRecorder(
+        store,
+        pricing=_config.llm_pricing,
+        analysis_run_id=run.id,
+        username=TARGET_USERNAME,
+    )
+    observed_provider = ObservedLLMProvider(
+        provider,
+        call_recorder,
+        operation="sentiment_analysis",
+    )
 
     print("📋 执行计划:")
     print(f"   输入文本: {len(texts)} 条")
@@ -231,7 +243,7 @@ def main():
 
     # 批量情感打分
     print(f"🧠 批量情感打分（{len(texts)} 条）...")
-    sentiments, run_stats = batch_sentiment(texts, provider, model)
+    sentiments, run_stats = batch_sentiment(texts, observed_provider, model)
     run.llm_calls = run_stats["batches"]
     run.failed_batches = run_stats["failed_batches"]
     run.total_tokens = run_stats["total_tokens"] or None
@@ -295,6 +307,13 @@ def main():
     else:
         record_analysis_run(store, complete_analysis_run(run))
     print(f"\n💾 结果已保存: {result_file}")
+    call_summary = call_recorder.summary()
+    print(
+        f"📈 LLM 调用: {call_summary['successful_calls']} 成功 / "
+        f"{call_summary['failed_calls']} 失败，Token {call_summary['total_tokens']}"
+    )
+    if call_summary["estimated_cost"]:
+        print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
 
     print("\n" + "=" * 60)
     print("✅ 情感分析完成！")

@@ -28,7 +28,12 @@ DEEPSEEK_API_KEY=你的DeepSeek_API_Key
 
 # 目标用户名（不带 @）
 TARGET_USERNAME=MiracleHe
+
+# 可选：每百万 input/output token 的 USD 单价，用于本地成本估算
+# LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
 ```
+
+每次翻译和 AI 分析的调用元数据会追加到 `cache/llm_calls.json`。该文件包含模型、Token、耗时、成功/失败和错误类型，但不会保存 Prompt 或模型响应正文。
 
 **快速获取:**
 - Twitter: https://developer.twitter.com/en/portal/dashboard

@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.translation_cache import (
     TranslationCacheContext,
     ensure_translation_cache,
@@ -100,6 +101,9 @@ def translate_text(
     metrics: TranslationMetrics | None = None,
     cache_context: TranslationCacheContext | None = None,
     cache_results: bool | None = None,
+    call_recorder: LLMCallRecorder | None = None,
+    provider_name: str = "unknown",
+    operation: str = "translation_single",
 ) -> str | None:
     context = _cache_context(cache_context, model)
     ensure_translation_cache(cache)
@@ -140,6 +144,8 @@ def translate_text(
 """.strip()
 
     for attempt in range(max_retries):
+        started = call_recorder.start() if call_recorder else None
+        response = None
         try:
             response = client_factory().chat.completions.create(
                 model=model,
@@ -148,10 +154,29 @@ def translate_text(
             )
             _record_usage(metrics, response)
             result = response.choices[0].message.content.strip()
+            if call_recorder and started:
+                call_recorder.record_success(
+                    operation=operation,
+                    provider=provider_name,
+                    model=model,
+                    started=started,
+                    response=response,
+                    attempt=attempt + 1,
+                )
             if should_cache_results:
                 set_cached_translation(cache, text, result, context)
             return result
         except Exception as e:
+            if call_recorder and started:
+                call_recorder.record_failure(
+                    operation=operation,
+                    provider=provider_name,
+                    model=model,
+                    started=started,
+                    error=e,
+                    attempt=attempt + 1,
+                    response=response,
+                )
             if attempt < max_retries - 1:
                 print(f"⚠️ 翻译失败，重试 {attempt + 1}/{max_retries}... 错误: {str(e)}")
                 time.sleep(2 ** attempt)
@@ -176,6 +201,9 @@ def translate_batch(
     metrics: TranslationMetrics | None = None,
     cache_context: TranslationCacheContext | None = None,
     cache_results: bool | None = None,
+    call_recorder: LLMCallRecorder | None = None,
+    provider_name: str = "unknown",
+    operation: str = "translation_batch",
 ) -> list[str | None]:
     if batch_size < 1:
         raise ValueError("batch_size must be >= 1")
@@ -255,6 +283,8 @@ def translate_batch(
 {numbered_lines}""".strip()
 
         for attempt in range(max_retries):
+            started = call_recorder.start() if call_recorder else None
+            response = None
             try:
                 response = client_factory().chat.completions.create(
                     model=model,
@@ -269,6 +299,16 @@ def translate_batch(
                         f"批量翻译响应数量不匹配，期望 {current_batch_size} 条，实际解析 {len(parsed)} 条"
                     )
 
+                if call_recorder and started:
+                    call_recorder.record_success(
+                        operation=operation,
+                        provider=provider_name,
+                        model=model,
+                        started=started,
+                        response=response,
+                        attempt=attempt + 1,
+                    )
+
                 for j, idx in enumerate(batch_indices):
                     results[idx] = parsed[j]
                     if should_cache_results:
@@ -277,6 +317,16 @@ def translate_batch(
                 print(f" ✅ 已翻译 {translated_count}/{len(to_translate_texts)} 条")
                 break
             except Exception as e:
+                if call_recorder and started:
+                    call_recorder.record_failure(
+                        operation=operation,
+                        provider=provider_name,
+                        model=model,
+                        started=started,
+                        error=e,
+                        attempt=attempt + 1,
+                        response=response,
+                    )
                 if attempt < max_retries - 1:
                     print(f"⚠️ 批量翻译失败，重试 {attempt + 1}/{max_retries}... {str(e)}")
                     time.sleep(2 ** attempt)

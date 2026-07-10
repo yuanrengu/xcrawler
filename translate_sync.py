@@ -7,6 +7,7 @@ import shutil
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
+from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
 from xcrawler.services.translation import translate_batch, translate_text
 from xcrawler.services.translation_cache import (
@@ -16,7 +17,7 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils.text import clean_text, detect_language
 
 _config = load_config()
@@ -64,6 +65,11 @@ def main():
     username = args.user or TARGET_USERNAME
     cache_dir = args.cache_dir or CACHE_DIR
     ensure_dir(cache_dir)
+    call_recorder = LLMCallRecorder(
+        JsonStore(cache_dir),
+        pricing=_config.llm_pricing,
+        username=username,
+    )
 
     print("=" * 60)
     print("🔄 翻译同步工具 (Translation Sync)")
@@ -167,6 +173,9 @@ def main():
             metrics=metrics,
             cache_context=cache_context,
             cache_results=True,
+            call_recorder=call_recorder,
+            provider_name="deepseek",
+            operation="translation_sync_single",
         )
 
     batch_results = translate_batch(
@@ -182,6 +191,9 @@ def main():
         metrics=metrics,
         cache_context=cache_context,
         cache_results=True,
+        call_recorder=call_recorder,
+        provider_name="deepseek",
+        operation="translation_sync_batch",
     )
 
     new_translations = []
@@ -212,13 +224,21 @@ def main():
         )
         print(f"   当前缓存条目: {translation_cache_entry_count(translation_cache, cache_context)}")
         print(f"   缓存配置指纹: {metrics['cache_fingerprint']}")
-
         if args.force:
             print(f"✅ 重新翻译完成！共处理 {len(new_translations)} 条")
         else:
             print(f"✅ 同步完成！新增翻译 {len(new_translations)} 条")
     else:
         print("\n⚠️ 未能生成有效翻译")
+
+    call_summary = call_recorder.summary()
+    if call_summary["calls"]:
+        print(
+            f"   LLM 调用记录: {call_summary['successful_calls']} 成功 / "
+            f"{call_summary['failed_calls']} 失败"
+        )
+        if call_summary["estimated_cost"]:
+            print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
 
     print("\n" + "=" * 60)
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 
+from xcrawler.services.llm_calls import LLMCallRecorder
+
 
 def deepseek_profile_summary(
     cluster_text: str,
@@ -9,6 +11,9 @@ def deepseek_profile_summary(
     client_factory,
     model: str,
     max_retries: int = 3,
+    call_recorder: LLMCallRecorder | None = None,
+    provider_name: str = "unknown",
+    operation: str = "profile_summary",
 ) -> str:
     """生成用户画像，支持重试。
 
@@ -37,15 +42,36 @@ def deepseek_profile_summary(
 """
 
     for attempt in range(max_retries):
+        started = call_recorder.start() if call_recorder else None
+        response = None
         try:
-            r = client_factory().chat.completions.create(
+            response = client_factory().chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
             )
-            raw = r.choices[0].message.content
+            raw = response.choices[0].message.content
+            if call_recorder and started:
+                call_recorder.record_success(
+                    operation=operation,
+                    provider=provider_name,
+                    model=model,
+                    started=started,
+                    response=response,
+                    attempt=attempt + 1,
+                )
             return raw.strip() if raw else ""
         except Exception as e:
+            if call_recorder and started:
+                call_recorder.record_failure(
+                    operation=operation,
+                    provider=provider_name,
+                    model=model,
+                    started=started,
+                    error=e,
+                    attempt=attempt + 1,
+                    response=response,
+                )
             if attempt < max_retries - 1:
                 print(f"⚠️ 画像生成失败，重试 {attempt + 1}/{max_retries}...")
                 time.sleep(2**attempt)

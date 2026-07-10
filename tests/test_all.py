@@ -1564,6 +1564,179 @@ class TestLLMProvider:
         assert response.latency_ms is not None
 
 
+class TestLLMCallObservability:
+    """测试调用级 LLM 元数据、成本和失败率记录。"""
+
+    def test_parse_llm_pricing_rejects_invalid_entries(self):
+        from xcrawler.config import parse_llm_pricing
+
+        pricing = parse_llm_pricing(
+            json.dumps({
+                "model-a": {"input_per_million": "1.5", "output_per_million": 2},
+                "negative": {"input_per_million": -1, "output_per_million": 2},
+                "infinite": {"input_per_million": "Infinity", "output_per_million": 2},
+                "missing": {"input_per_million": 1},
+            })
+        )
+
+        assert pricing == {
+            "model-a": {"input_per_million": 1.5, "output_per_million": 2.0}
+        }
+        assert parse_llm_pricing("not-json") == {}
+
+    def test_estimate_llm_cost_uses_configured_model_or_wildcard(self):
+        from xcrawler.services.llm_calls import estimate_llm_cost
+
+        pricing = {
+            "model-a": {"input_per_million": 1.0, "output_per_million": 2.0},
+            "*": {"input_per_million": 3.0, "output_per_million": 4.0},
+        }
+
+        assert estimate_llm_cost(
+            model="model-a",
+            prompt_tokens=1_000,
+            completion_tokens=500,
+            pricing=pricing,
+        ) == 0.002
+        assert estimate_llm_cost(
+            model="model-b",
+            prompt_tokens=1_000,
+            completion_tokens=500,
+            pricing=pricing,
+        ) == 0.005
+
+    def test_recorder_persists_success_and_failure_without_content(self, tmp_path):
+        from xcrawler.llm.provider import LLMResponse
+        from xcrawler.services.llm_calls import LLMCallRecorder, load_llm_calls
+        from xcrawler.storage.json_store import JsonStore
+
+        store = JsonStore(str(tmp_path))
+        recorder = LLMCallRecorder(
+            store,
+            pricing={"model-a": {"input_per_million": 1, "output_per_million": 2}},
+            analysis_run_id="run-1",
+            username="alice",
+        )
+        response = LLMResponse(
+            content="private response",
+            model="model-a",
+            provider="test",
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            latency_ms=12,
+        )
+        recorder.record_success(
+            operation="interest_analysis",
+            provider="test",
+            model="model-a",
+            started=recorder.start(),
+            response=response,
+        )
+        recorder.record_failure(
+            operation="interest_analysis",
+            provider="test",
+            model="model-a",
+            started=recorder.start(),
+            error=TimeoutError("api_key=supersecret"),
+            attempt=2,
+        )
+
+        records = load_llm_calls(store)
+        assert len(records) == 2
+        assert records[0]["analysis_run_id"] == "run-1"
+        assert records[0]["username"] == "alice"
+        assert records[0]["estimated_cost"] == 0.0002
+        assert records[1]["status"] == "failed"
+        assert records[1]["error_type"] == "TimeoutError"
+        assert records[1]["error_message"] == "api_key=[REDACTED]"
+        assert records[1]["attempt"] == 2
+        assert "content" not in records[0]
+        assert "messages" not in records[0]
+
+        summary = recorder.summary()
+        assert summary["calls"] == 2
+        assert summary["successful_calls"] == 1
+        assert summary["failed_calls"] == 1
+        assert summary["failure_rate"] == 0.5
+        assert summary["total_tokens"] == 150
+
+    def test_observed_provider_records_success_and_failure(self, tmp_path):
+        from xcrawler.llm.provider import LLMResponse
+        from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
+        from xcrawler.storage.json_store import JsonStore
+
+        raw_provider = MagicMock()
+        raw_provider.name = "test-provider"
+        raw_provider.chat.side_effect = [
+            LLMResponse(content="ok", model="model-a", provider="test-provider", total_tokens=3),
+            RuntimeError("provider failed"),
+        ]
+        recorder = LLMCallRecorder(JsonStore(str(tmp_path)), analysis_run_id="run-2")
+        provider = ObservedLLMProvider(raw_provider, recorder, operation="sentiment_analysis")
+
+        assert provider.chat([], model="model-a").content == "ok"
+        with pytest.raises(RuntimeError, match="provider failed"):
+            provider.chat([], model="model-a")
+
+        assert [record.status for record in recorder.records] == ["success", "failed"]
+        assert all(record.analysis_run_id == "run-2" for record in recorder.records)
+
+    def test_telemetry_write_failure_does_not_break_llm_workflow(self):
+        from xcrawler.llm.provider import LLMResponse
+        from xcrawler.services.llm_calls import LLMCallRecorder
+
+        store = MagicMock()
+        store.append_json_record.side_effect = OSError("disk full")
+        recorder = LLMCallRecorder(store)
+
+        with pytest.warns(RuntimeWarning, match="业务流程将继续"):
+            record = recorder.record_success(
+                operation="interest_analysis",
+                provider="test",
+                model="model-a",
+                started=recorder.start(),
+                response=LLMResponse(content="ok", model="model-a", provider="test"),
+            )
+
+        assert record.status == "success"
+        assert recorder.records == [record]
+
+    def test_translation_parse_failure_records_spent_tokens(self, tmp_path):
+        from xcrawler.services.llm_calls import LLMCallRecorder
+        from xcrawler.services.translation import translate_batch
+        from xcrawler.storage.json_store import JsonStore
+
+        response = MagicMock()
+        response.choices = [MagicMock()]
+        response.choices[0].message.content = "incomplete response"
+        response.usage.prompt_tokens = 10
+        response.usage.completion_tokens = 2
+        response.usage.total_tokens = 12
+        client = MagicMock()
+        client.chat.completions.create.return_value = response
+        recorder = LLMCallRecorder(JsonStore(str(tmp_path)), username="alice")
+
+        result = translate_batch(
+            ["hello", "world"],
+            detected_langs=["en", "en"],
+            use_cache=False,
+            cache={},
+            client_factory=lambda: client,
+            model="model-a",
+            batch_size=2,
+            max_retries=1,
+            fallback_translate=lambda text, lang, use_cache: None,
+            call_recorder=recorder,
+            provider_name="test-provider",
+        )
+
+        assert result == [None, None]
+        assert recorder.records[0].status == "failed"
+        assert recorder.records[0].error_type == "ValueError"
+        assert recorder.records[0].total_tokens == 12
+
+
 class TestVisualizeEvidence:
     """测试 HTML 报告证据区"""
 

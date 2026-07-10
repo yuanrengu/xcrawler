@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from xcrawler.config import load_config
-from xcrawler.llm.provider import DeepSeekProvider
+from xcrawler.llm.provider import DeepSeekProvider, OpenAICompatibleProvider
 from xcrawler.services.analysis_runs import (
     complete_analysis_run,
     create_analysis_run,
@@ -17,6 +17,7 @@ from xcrawler.services.analysis_runs import (
     record_analysis_run,
 )
 from xcrawler.services.evidence import validate_interest_evidence
+from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore, load_json, save_json
@@ -30,18 +31,26 @@ _config = load_config()
 
 API_KEY = _config.deepseek_api_key or _config.openai_api_key
 BASE_URL = _config.deepseek_base_url if _config.deepseek_api_key else _config.openai_base_url
+PROVIDER_NAME = "deepseek" if _config.deepseek_api_key else "openai"
 MODEL = _config.llm_model
 TARGET_USERNAME = _config.target_username
 
-provider: DeepSeekProvider | None = None
+provider: OpenAICompatibleProvider | None = None
 
 
-def _get_provider() -> DeepSeekProvider:
+def _get_provider() -> OpenAICompatibleProvider:
     global provider
     if not API_KEY:
         raise RuntimeError("未检测到 API Key，请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
     if provider is None:
-        provider = DeepSeekProvider(api_key=API_KEY, base_url=BASE_URL)
+        if PROVIDER_NAME == "deepseek":
+            provider = DeepSeekProvider(api_key=API_KEY, base_url=BASE_URL)
+        else:
+            provider = OpenAICompatibleProvider(
+                api_key=API_KEY,
+                base_url=BASE_URL,
+                name=PROVIDER_NAME,
+            )
     return provider
 
 
@@ -130,7 +139,8 @@ Step 5：提炼支持关键词或典型表达
 
 def analyze_user_interest(
     texts: list[str],
-    temperature: float = 0.2
+    temperature: float = 0.2,
+    llm=None,
 ) -> dict[str, Any]:
     """
     分析用户兴趣画像（少数据优化版）
@@ -146,7 +156,7 @@ def analyze_user_interest(
     joined_text = "\n".join(f"- {t}" for t in texts)
     prompt = PROMPT_TEMPLATE.format(user_text=joined_text)
 
-    response = _get_provider().chat(
+    response = (llm or _get_provider()).chat(
         [
             {"role": "system", "content": "你是一个严谨、克制、以证据为导向的分析助手。请务必输出合法的 JSON 格式。"},
             {"role": "user", "content": prompt}
@@ -315,15 +325,37 @@ def main():
                 "analyzed_texts": len(texts),
                 "strategy": "single_prompt_even_sampling",
             },
-            config={"provider": "deepseek"},
+            config={"provider": PROVIDER_NAME},
+        )
+        call_recorder = LLMCallRecorder(
+            store,
+            pricing=_config.llm_pricing,
+            analysis_run_id=run.id,
+            username=TARGET_USERNAME,
+        )
+        observed_provider = ObservedLLMProvider(
+            _get_provider(),
+            call_recorder,
+            operation="interest_analysis",
         )
         
-        result, total_tokens = analyze_user_interest(texts, temperature=args.temperature)
+        result, total_tokens = analyze_user_interest(
+            texts,
+            temperature=args.temperature,
+            llm=observed_provider,
+        )
         result = validate_interest_evidence(result, translated_records, require_evidence=True)
         result["analysis_run_id"] = run.id
         run.llm_calls = 1
         run.total_tokens = total_tokens
         record_analysis_run(store, complete_analysis_run(run))
+        call_summary = call_recorder.summary()
+        print(
+            f"📈 LLM 调用: {call_summary['successful_calls']} 成功 / "
+            f"{call_summary['failed_calls']} 失败，Token {call_summary['total_tokens']}"
+        )
+        if call_summary["estimated_cost"]:
+            print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
         
         # 3. 显示结果
         print("=" * 60)

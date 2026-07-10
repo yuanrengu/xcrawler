@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -23,6 +26,36 @@ class AppConfig:
     llm_model: str = "deepseek-chat"
     target_date: datetime = datetime(2024, 1, 1)
     timezone_offset: float = DEFAULT_TIMEZONE_OFFSET
+    llm_pricing: dict[str, dict[str, float]] | None = None
+
+
+def parse_llm_pricing(value: str | None) -> dict[str, dict[str, float]]:
+    """Parse an optional per-model LLM price table without shipping stale prices."""
+    if not value:
+        return {}
+    try:
+        raw: Any = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    pricing: dict[str, dict[str, float]] = {}
+    for model, rates in raw.items():
+        if not isinstance(model, str) or not isinstance(rates, dict):
+            continue
+        try:
+            input_rate = float(rates["input_per_million"])
+            output_rate = float(rates["output_per_million"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not math.isfinite(input_rate) or not math.isfinite(output_rate) or input_rate < 0 or output_rate < 0:
+            continue
+        pricing[model] = {
+            "input_per_million": input_rate,
+            "output_per_million": output_rate,
+        }
+    return pricing
 
 
 def load_config() -> AppConfig:
@@ -42,6 +75,7 @@ def load_config() -> AppConfig:
         llm_model=os.getenv("LLM_MODEL", "deepseek-chat"),
         target_date=target_date,
         timezone_offset=float(os.getenv("TIMEZONE_OFFSET", str(int(DEFAULT_TIMEZONE_OFFSET)))),
+        llm_pricing=parse_llm_pricing(os.getenv("LLM_PRICING_JSON")),
     )
 
 

@@ -16,6 +16,7 @@ from xcrawler.services.analysis_runs import (
     record_analysis_run,
 )
 from xcrawler.services.evidence import validate_life_event_evidence
+from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.json_store import JsonStore, load_json, save_json
@@ -137,7 +138,7 @@ def analyze_time_patterns(raw_tweets):
         "tz_label": tz_label
     }
 
-def detect_life_events(translated_data):
+def detect_life_events(translated_data, provider_override=None):
     """使用AI检测生活事件"""
     if not AI_AVAILABLE:
         print("⚠️ AI功能不可用，跳过事件检测")
@@ -187,7 +188,11 @@ def detect_life_events(translated_data):
 """
     
     try:
-        r = _get_llm_provider().chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0)
+        r = (provider_override or _get_llm_provider()).chat(
+            [{"role": "user", "content": prompt}],
+            model=LLM_MODEL,
+            temperature=0,
+        )
         _record_llm_tokens(r.total_tokens)
         result = r.content
         
@@ -258,7 +263,7 @@ def _limit_life_events(life_events):
     return limited
 
 
-def generate_behavior_summary(time_analysis, life_events):
+def generate_behavior_summary(time_analysis, life_events, provider_override=None):
     """生成行为特征总结"""
     if not AI_AVAILABLE:
         return "AI功能不可用，无法生成总结"
@@ -286,7 +291,11 @@ def generate_behavior_summary(time_analysis, life_events):
 """
     
     try:
-        r = _get_llm_provider().chat([{"role": "user", "content": prompt}], model=LLM_MODEL, temperature=0.3)
+        r = (provider_override or _get_llm_provider()).chat(
+            [{"role": "user", "content": prompt}],
+            model=LLM_MODEL,
+            temperature=0.3,
+        )
         _record_llm_tokens(r.total_tokens)
         return r.content
     except Exception as e:
@@ -344,6 +353,12 @@ def main():
         },
         config={"provider": "deepseek" if AI_AVAILABLE else None},
     )
+    call_recorder = LLMCallRecorder(
+        store,
+        pricing=_config.llm_pricing,
+        analysis_run_id=run.id,
+        username=TARGET_USERNAME,
+    )
     
     print(f"✅ 已加载 {len(raw_tweets)} 条原始推文\n")
     
@@ -362,8 +377,14 @@ def main():
         
         # 3. 生活事件检测
         if AI_AVAILABLE:
+            raw_provider = _get_llm_provider()
+            event_provider = ObservedLLMProvider(
+                raw_provider,
+                call_recorder,
+                operation="behavior_event_detection",
+            )
             print("🔍 检测生活事件（使用AI）...")
-            life_events = detect_life_events(translated_data)
+            life_events = detect_life_events(translated_data, provider_override=event_provider)
             if life_events:
                 life_events = _normalize_life_events(life_events)
                 life_events = validate_life_event_evidence(life_events, translated_data, require_evidence=True)
@@ -380,7 +401,16 @@ def main():
         # 4. 生成行为总结
         if AI_AVAILABLE:
             print("🧠 生成行为特征总结...")
-            behavior_summary = generate_behavior_summary(time_analysis, life_events)
+            summary_provider = ObservedLLMProvider(
+                _get_llm_provider(),
+                call_recorder,
+                operation="behavior_summary",
+            )
+            behavior_summary = generate_behavior_summary(
+                time_analysis,
+                life_events,
+                provider_override=summary_provider,
+            )
             if behavior_summary == "无法生成总结":
                 failed_steps += 1
                 print("⚠️ 总结生成失败\n")
@@ -416,11 +446,19 @@ def main():
     save_json(result_file, result)
     run.llm_calls = LLM_METRICS["calls"]
     run.total_tokens = LLM_METRICS["total_tokens"] or None
+    call_summary = call_recorder.summary()
     if failed_steps:
         record_analysis_run(store, partial_analysis_run(run, failed_batches=failed_steps))
     else:
         record_analysis_run(store, complete_analysis_run(run))
     print(f"💾 行为分析已保存至: {result_file}\n")
+    if call_summary["calls"]:
+        print(
+            f"📈 LLM 调用: {call_summary['successful_calls']} 成功 / "
+            f"{call_summary['failed_calls']} 失败，Token {call_summary['total_tokens']}"
+        )
+        if call_summary["estimated_cost"]:
+            print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
     
     # 6. 输出结果
     print("\n" + "=" * 60)
