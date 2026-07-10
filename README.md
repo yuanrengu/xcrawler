@@ -291,6 +291,8 @@ xcrawler export csv -u MiracleHe --output ./my_data
 - `{username}_translations.csv` - 原文 + 翻译 + 语言
 - `{username}_interests.csv` - 兴趣标签 + 置信度
 
+为避免 Excel / LibreOffice 把公开文本或模型输出当作公式执行，危险前缀会自动加英文单引号。Tweet ID 也会按文本导出，避免超长数字被电子表格舍入；使用其他 CSV 工具读取时可能会看到这个保护性单引号。
+
 
 ## 🎯 功能特性
 

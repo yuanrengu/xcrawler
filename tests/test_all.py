@@ -2,6 +2,7 @@
 xcrawler 单元测试
 覆盖纯函数、工具函数和需要 mock 的 API 调用
 """
+import csv
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -661,6 +662,24 @@ class TestAnalysisImports:
 class TestExportCsvHelpers:
     """测试 CSV 导出辅助逻辑"""
 
+    @pytest.mark.parametrize("value", [
+        "=1+1",
+        "+SUM(A1:A2)",
+        "-2+3",
+        "@SUM(A1:A2)",
+        "  =HYPERLINK(\"https://example.com\")",
+        "\t=CMD()",
+    ])
+    def test_safe_csv_cell_blocks_spreadsheet_formulas(self, value):
+        from export_csv import safe_csv_cell
+
+        assert safe_csv_cell(value) == f"'{value}"
+
+    def test_safe_csv_cell_preserves_normal_text(self):
+        from export_csv import safe_csv_cell
+
+        assert safe_csv_cell("ordinary text") == "ordinary text"
+
     def test_export_tweets(self, tmp_path):
         from export_csv import export_tweets
         tweets = [
@@ -698,6 +717,43 @@ class TestExportCsvHelpers:
         assert "你好" in content
         assert "en" in content
 
+    def test_export_tweets_escapes_formula_and_preserves_long_id(self, tmp_path):
+        from export_csv import export_tweets
+
+        tweet_id = "1999999999999999999"
+        output = str(tmp_path / "tweets.csv")
+        export_tweets([{
+            "id": tweet_id,
+            "text": "=HYPERLINK(\"https://example.com\")",
+            "created_at": "2026-01-01T00:00:00Z",
+            "entities": {},
+        }], output)
+
+        with open(output, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+
+        assert rows[1][0] == f"'{tweet_id}"
+        assert rows[1][1] == "'=HYPERLINK(\"https://example.com\")"
+
+    def test_export_translations_escapes_untrusted_text(self, tmp_path):
+        from export_csv import export_translations
+
+        output = str(tmp_path / "translations.csv")
+        export_translations([{
+            "tweet_id": "1999999999999999999",
+            "original": "+CMD()",
+            "translated": "  @SUM(A1:A2)",
+            "detected_language": "en",
+            "created_at": "2026-01-01",
+        }], output)
+
+        with open(output, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+
+        assert rows[1][0] == "'1999999999999999999"
+        assert rows[1][1] == "'+CMD()"
+        assert rows[1][2] == "'  @SUM(A1:A2)"
+
     def test_export_interests_includes_evidence_ids(self, tmp_path):
         from export_csv import export_interests
 
@@ -719,6 +775,28 @@ class TestExportCsvHelpers:
             content = f.read()
         assert "evidence_tweet_ids" in content
         assert "123" in content
+
+    def test_export_interests_escapes_llm_generated_fields(self, tmp_path):
+        from export_csv import export_interests
+
+        output = str(tmp_path / "interests.csv")
+        export_interests({"interests": [{
+            "tag": "@SUM(A1:A2)",
+            "level": "core",
+            "confidence": "=1+1",
+            "keywords": ["+CMD()"],
+            "evidence_count": 1,
+            "evidence_tweet_ids": ["1999999999999999999"],
+            "evidence_status": "ok",
+        }]}, output)
+
+        with open(output, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.reader(f))
+
+        assert rows[1][0] == "'@SUM(A1:A2)"
+        assert rows[1][2] == "'=1+1"
+        assert rows[1][3] == "'+CMD()"
+        assert rows[1][5] == "'1999999999999999999"
 
 
 # ==============================

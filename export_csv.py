@@ -17,6 +17,28 @@ _config = load_config()
 TARGET_USERNAME = _config.target_username
 CACHE_DIR = _config.cache_dir
 
+DANGEROUS_CSV_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+
+def safe_csv_cell(value, *, force_text: bool = False) -> str:
+    """Return a spreadsheet-safe cell value.
+
+    A leading apostrophe prevents Excel-compatible applications from evaluating
+    untrusted values as formulas. ``force_text`` also protects long tweet IDs
+    from numeric precision loss.
+    """
+    if value is None:
+        return ""
+    text = str(value)
+    candidate = text.lstrip()
+    if text and (force_text or text.startswith(DANGEROUS_CSV_PREFIXES) or candidate.startswith(DANGEROUS_CSV_PREFIXES)):
+        return f"'{text}"
+    return text
+
+
+def _csv_writer(file_obj):
+    return csv.writer(file_obj, quoting=csv.QUOTE_ALL, lineterminator="\n")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="将分析数据导出为 CSV")
@@ -31,18 +53,18 @@ def parse_args():
 def export_tweets(raw_tweets, output_path):
     """导出原始推文"""
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.writer(f)
+        writer = _csv_writer(f)
         writer.writerow(["id", "text", "created_at", "hashtags", "mentions"])
         for t in raw_tweets:
             entities = t.get("entities", {})
             tags = ", ".join(ht.get("tag", "") for ht in entities.get("hashtags", []))
             mentions = ", ".join(m.get("username", "") for m in entities.get("mentions", []))
             writer.writerow([
-                t.get("id", ""),
-                t.get("text", "").replace("\n", " "),
-                t.get("created_at", ""),
-                tags,
-                mentions
+                safe_csv_cell(t.get("id", ""), force_text=True),
+                safe_csv_cell(t.get("text", "").replace("\n", " ")),
+                safe_csv_cell(t.get("created_at", "")),
+                safe_csv_cell(tags),
+                safe_csv_cell(mentions),
             ])
     print(f"   ✅ 推文导出: {output_path} ({len(raw_tweets)} 条)")
 
@@ -51,15 +73,15 @@ def export_translations(translated_data, output_path):
     """导出翻译数据"""
     translated_data = normalize_translated_tweets(translated_data)
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.writer(f)
+        writer = _csv_writer(f)
         writer.writerow(["tweet_id", "original", "translated", "detected_language", "created_at"])
         for item in translated_data:
             writer.writerow([
-                item.get("tweet_id", ""),
-                item.get("original", "").replace("\n", " "),
-                item.get("translated", "").replace("\n", " "),
-                item.get("detected_language", ""),
-                item.get("created_at", "")
+                safe_csv_cell(item.get("tweet_id", ""), force_text=True),
+                safe_csv_cell(item.get("original", "").replace("\n", " ")),
+                safe_csv_cell(item.get("translated", "").replace("\n", " ")),
+                safe_csv_cell(item.get("detected_language", "")),
+                safe_csv_cell(item.get("created_at", "")),
             ])
     print(f"   ✅ 翻译导出: {output_path} ({len(translated_data)} 条)")
 
@@ -71,17 +93,17 @@ def export_interests(profile_data, output_path):
         return
 
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.writer(f)
+        writer = _csv_writer(f)
         writer.writerow(["tag", "level", "confidence", "keywords", "evidence_count", "evidence_tweet_ids", "evidence_status"])
         for interest in profile_data.get("interests", []):
             writer.writerow([
-                interest.get("tag", ""),
-                interest.get("level", ""),
-                interest.get("confidence", ""),
-                ", ".join(interest.get("keywords", [])),
-                interest.get("evidence_count", 0),
-                ", ".join(interest.get("evidence_tweet_ids", [])),
-                interest.get("evidence_status", "")
+                safe_csv_cell(interest.get("tag", "")),
+                safe_csv_cell(interest.get("level", "")),
+                safe_csv_cell(interest.get("confidence", "")),
+                safe_csv_cell(", ".join(interest.get("keywords", []))),
+                safe_csv_cell(interest.get("evidence_count", 0)),
+                safe_csv_cell(", ".join(interest.get("evidence_tweet_ids", [])), force_text=True),
+                safe_csv_cell(interest.get("evidence_status", "")),
             ])
     print(f"   ✅ 兴趣导出: {output_path}")
 

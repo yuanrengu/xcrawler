@@ -25,7 +25,7 @@ xcrawler 会在本地 `cache/`、`cache_backup/` 和报告文件中保存抓取�
 - 不提交 `.env`、`cache/`、`cache_backup/` 或生成的报告。
 - 为公开演示使用专门的测试账号和低权限 API key。
 - 定期轮换 X/Twitter、DeepSeek、OpenAI 等 API key。
-- 分享 HTML、Markdown、CSV 或 JSON 报告前，先检查敏感事件和证据原文。
+- CSV 导出会转义电子表格公式前缀并把 Tweet ID 强制按文本保存，但分享 HTML、Markdown、CSV 或 JSON 报告前仍应检查敏感事件和证据原文。
 
 ## 隐私默认值
 
