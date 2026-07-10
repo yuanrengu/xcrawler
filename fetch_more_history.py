@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import time
 from datetime import datetime
 
@@ -19,6 +18,7 @@ from xcrawler.clients import x_api
 from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
+from xcrawler.storage.json_store import JsonStoreError, load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
 
@@ -226,16 +226,13 @@ def main():
     
     if os.path.exists(raw_file):
         try:
-            with open(raw_file, encoding='utf-8') as f:
-                existing_tweets = json.load(f)
+            existing_tweets = load_json(raw_file, default=[])
+            if not isinstance(existing_tweets, list):
+                raise JsonStoreError(f"原始推文文件必须是 JSON 数组: {raw_file}")
             print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
-        except json.JSONDecodeError:
-            backup_path = raw_file + ".bak"
-            if existing_tweets:
-                shutil.copy2(raw_file, backup_path)
-                print(f"📋 已备份损坏数据: {backup_path}")
-            print("⚠️ 数据文件损坏，将重新开始抓取")
-            existing_tweets = []
+        except JsonStoreError as error:
+            print(f"❌ 无法安全加载现有数据: {error}")
+            return 1
     else:
         print("⚠️ 未找到现有数据文件，将从头开始抓取")
 
@@ -345,8 +342,7 @@ def main():
         print(f"💾 保存总推文数: {len(final_list)} 条")
         
         # 写入文件
-        with open(raw_file, 'w', encoding='utf-8') as f:
-            json.dump(final_list, f, ensure_ascii=False, indent=2)
+        save_json(raw_file, final_list)
             
         print(f"✅ 数据已更新至: {raw_file}")
         

@@ -19,7 +19,7 @@ from xcrawler.services.analysis_runs import (
 from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
-from xcrawler.storage.json_store import JsonStore
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
 
 # =========================
@@ -203,8 +203,7 @@ def load_translated_tweets(cache_dir: str = "cache", username: str = None) -> li
             f"请先运行 main.py 抓取并翻译数据"
         )
     
-    with open(translated_file, encoding='utf-8') as f:
-        data = json.load(f)
+    data = load_json(translated_file, default=[])
     
     # 提取翻译后的文本，兼容旧格式 translated.json（缺少 tweet_id 时补 None）。
     # 保留 tweet_id 前缀，便于模型输出 evidence_tweet_ids。
@@ -230,8 +229,7 @@ def load_translated_records(cache_dir: str = "cache", username: str = None) -> l
             f"请先运行 main.py 抓取并翻译数据"
         )
 
-    with open(translated_file, encoding='utf-8') as f:
-        return normalize_translated_tweets(json.load(f))
+    return normalize_translated_tweets(load_json(translated_file, default=[]))
 
 
 def save_analysis_result(result: dict[str, Any], cache_dir: str = "cache", username: str = None):
@@ -247,8 +245,7 @@ def save_analysis_result(result: dict[str, Any], cache_dir: str = "cache", usern
     
     output_file = os.path.join(cache_dir, f"{username}_interest_profile.json")
     
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    save_json(output_file, result)
     
     print(f"\n✅ 分析结果已保存: {output_file}")
 

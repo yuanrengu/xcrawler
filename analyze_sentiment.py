@@ -5,7 +5,6 @@ from __future__ import annotations
 对翻译后的推文进行情感打分（正/中/负），生成趋势图
 """
 import argparse
-import json
 import os
 import re
 from collections import Counter, defaultdict
@@ -20,7 +19,7 @@ from xcrawler.services.analysis_runs import (
     record_analysis_run,
 )
 from xcrawler.services.records import normalize_translated_tweets
-from xcrawler.storage.json_store import JsonStore
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils import cli_validation
 
 try:
@@ -201,8 +200,7 @@ def main():
         print("   请先运行 main.py")
         return 1
 
-    with open(translated_file, encoding='utf-8') as f:
-        translated_data = normalize_translated_tweets(json.load(f))
+    translated_data = normalize_translated_tweets(load_json(translated_file, default=[]))
 
     sentiment_inputs = [item for item in translated_data if item.get("translated")]
     texts = [item["translated"] for item in sentiment_inputs]
@@ -291,8 +289,7 @@ def main():
         ],
     }
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_sentiment.json")
-    with open(result_file, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    save_json(result_file, result)
     if run_stats["failed_batches"]:
         record_analysis_run(store, partial_analysis_run(run, failed_batches=run_stats["failed_batches"]))
     else:

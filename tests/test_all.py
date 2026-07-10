@@ -149,15 +149,17 @@ class TestTranslationCache:
         finally:
             main.CACHE_DIR = original_dir
 
-    def test_load_corrupt_file(self, tmp_path):
+    def test_load_corrupt_file_without_backup_raises(self, tmp_path):
         import main
+        from xcrawler.storage.json_store import JsonStoreError
+
         original_dir = main.CACHE_DIR
         main.CACHE_DIR = str(tmp_path)
         try:
             cache_file = tmp_path / "translation_cache.json"
             cache_file.write_text("not valid json {{{")
-            loaded = main.load_translation_cache()
-            assert loaded == {}
+            with pytest.raises(JsonStoreError, match="没有可恢复备份"):
+                main.load_translation_cache()
         finally:
             main.CACHE_DIR = original_dir
 
@@ -757,6 +759,49 @@ class TestJsonStore:
         from xcrawler.storage.json_store import load_json
         assert load_json(str(tmp_path / "missing.json"), default=[]) == []
 
+    def test_save_json_keeps_primary_when_replace_fails(self, tmp_path, monkeypatch):
+        from xcrawler.storage import json_store
+
+        path = tmp_path / "data.json"
+        json_store.save_json(str(path), {"version": 1})
+        real_replace = json_store.os.replace
+
+        def fail_primary_replace(source, destination):
+            if destination == str(path):
+                raise OSError("simulated interruption")
+            return real_replace(source, destination)
+
+        monkeypatch.setattr(json_store.os, "replace", fail_primary_replace)
+
+        with pytest.raises(OSError, match="simulated interruption"):
+            json_store.save_json(str(path), {"version": 2})
+
+        assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
+        assert not list(tmp_path.glob(".data.json.*.tmp"))
+
+    def test_load_json_recovers_corrupt_primary_from_backup(self, tmp_path):
+        from xcrawler.storage.json_store import load_json, save_json
+
+        path = tmp_path / "data.json"
+        save_json(str(path), {"version": 1})
+        save_json(str(path), {"version": 2})
+        path.write_text("not valid json {{{", encoding="utf-8")
+
+        with pytest.warns(RuntimeWarning, match="已从备份恢复"):
+            recovered = load_json(str(path))
+
+        assert recovered == {"version": 1}
+        assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
+
+    def test_load_json_corrupt_without_backup_raises(self, tmp_path):
+        from xcrawler.storage.json_store import JsonStoreError, load_json
+
+        path = tmp_path / "data.json"
+        path.write_text("not valid json {{{", encoding="utf-8")
+
+        with pytest.raises(JsonStoreError, match="没有可恢复备份"):
+            load_json(str(path), default={})
+
     def test_json_store_append_record(self, tmp_path):
         from xcrawler.storage.json_store import JsonStore
 
@@ -765,8 +810,6 @@ class TestJsonStore:
         store.append_json_record("runs.json", {"id": "2"})
 
         assert store.load_json("runs.json") == [{"id": "1"}, {"id": "2"}]
-
-
 
 
 class TestModels:

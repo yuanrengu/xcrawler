@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shutil
 
@@ -28,13 +27,11 @@ def load_data(username, cache_dir):
 
     raw_tweets = []
     if os.path.exists(raw_file):
-        with open(raw_file, encoding="utf-8") as f:
-            raw_tweets = json.load(f)
+        raw_tweets = load_json(raw_file, default=[])
 
     translated_data = []
     if os.path.exists(translated_file):
-        with open(translated_file, encoding="utf-8") as f:
-            translated_data = normalize_translated_tweets(json.load(f))
+        translated_data = normalize_translated_tweets(load_json(translated_file, default=[]))
 
     return raw_tweets, translated_data, translated_file
 
@@ -177,8 +174,7 @@ def main():
         current_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
         print(f"\n💾 保存更新后的翻译数据 ({len(current_data)} 条)...")
-        with open(translated_file_path, "w", encoding="utf-8") as f:
-            json.dump(current_data, f, ensure_ascii=False, indent=2)
+        save_json(translated_file_path, current_data)
 
         # Save updated cache to disk
         save_json(translation_cache_path(cache_dir), translation_cache)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from collections import Counter
 from datetime import datetime
@@ -228,8 +227,7 @@ def main():
         profile_info = get_user_profile(TARGET_USERNAME)
         if profile_info:
             profile_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_profile.json")
-            with open(profile_file, 'w', encoding='utf-8') as f:
-                json.dump(profile_info, f, ensure_ascii=False, indent=2)
+            save_json(profile_file, profile_info)
             print(f"   粉丝: {profile_info['followers_count']}  关注: {profile_info['following_count']}  推文: {profile_info['tweet_count']}")
             if profile_info.get("description"):
                 desc = profile_info["description"][:80]
@@ -249,8 +247,7 @@ def main():
         
         # 保存原始推文
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
-        with open(raw_file, 'w', encoding='utf-8') as f:
-            json.dump(raw_tweets, f, ensure_ascii=False, indent=2)
+        save_json(raw_file, raw_tweets)
         print(f"💾 原始推文已保存至: {raw_file}\n")
 
         # 3. 清洗 + 批量翻译
@@ -320,8 +317,7 @@ def main():
         # 保存失败列表供下次重试
         if failed_list:
             failed_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_failed.json")
-            with open(failed_file, 'w', encoding='utf-8') as f:
-                json.dump(failed_list, f, ensure_ascii=False, indent=2)
+            save_json(failed_file, failed_list)
             print(f"⚠️ {len(failed_list)} 条翻译失败，已保存至: {failed_file}")
             print("   下次运行将自动重试\n")
         
@@ -337,8 +333,7 @@ def main():
 
         # 保存翻译结果
         translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
-        with open(translated_file, 'w', encoding='utf-8') as f:
-            json.dump(translated_data, f, ensure_ascii=False, indent=2)
+        save_json(translated_file, translated_data)
         print(f"💾 翻译结果已保存至: {translated_file}")
         print(f"✅ 成功翻译 {len(translated)} 条推文\n")
 
@@ -407,8 +402,7 @@ def main():
         }
         
         result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_analysis.json")
-        with open(result_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
+        save_json(result_file, result)
         print(f"💾 完整分析已保存至: {result_file}\n")
 
         # 6. 输出结果

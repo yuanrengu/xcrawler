@@ -18,7 +18,7 @@ from xcrawler.services.analysis_runs import (
 from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
-from xcrawler.storage.json_store import JsonStore
+from xcrawler.storage.json_store import JsonStore, load_json, save_json
 from xcrawler.utils.time import parse_twitter_datetime
 
 _config = load_config()
@@ -327,11 +327,8 @@ def main():
         return 1
     
     print("📂 加载数据...")
-    with open(raw_file, encoding='utf-8') as f:
-        raw_tweets = json.load(f)
-    
-    with open(translated_file, encoding='utf-8') as f:
-        translated_data = normalize_translated_tweets(json.load(f))
+    raw_tweets = load_json(raw_file, default=[])
+    translated_data = normalize_translated_tweets(load_json(translated_file, default=[]))
 
     store = JsonStore(CACHE_DIR)
     run = create_analysis_run(
@@ -416,8 +413,7 @@ def main():
     }
     
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_behavior.json")
-    with open(result_file, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    save_json(result_file, result)
     run.llm_calls = LLM_METRICS["calls"]
     run.total_tokens = LLM_METRICS["total_tokens"] or None
     if failed_steps:
