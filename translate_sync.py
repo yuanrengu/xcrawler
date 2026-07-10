@@ -9,6 +9,13 @@ from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
 from xcrawler.services.translation import translate_batch, translate_text
+from xcrawler.services.translation_cache import (
+    TranslationCacheContext,
+    legacy_translation_cache_entry_count,
+    new_translation_cache,
+    normalize_translation_cache,
+    translation_cache_entry_count,
+)
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils.text import clean_text, detect_language
 
@@ -43,6 +50,10 @@ def _make_client():
     )
 
 
+def _translation_cache_context() -> TranslationCacheContext:
+    return TranslationCacheContext(provider="deepseek", model=LLM_MODEL)
+
+
 def main():
     args = argparse.ArgumentParser(description="翻译同步/重翻工具")
     args.add_argument("-u", "--user", help="目标用户名")
@@ -69,10 +80,20 @@ def main():
     print(f"   已翻译推文: {len(translated_data)} 条")
 
     # Load translation cache from disk
-    translation_cache = load_json(translation_cache_path(cache_dir), default={})
+    translation_cache = normalize_translation_cache(load_json(translation_cache_path(cache_dir), default={}))
+    cache_context = _translation_cache_context()
+    metrics: dict[str, int | str] = {
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_bypassed": 0,
+        "cache_fingerprint": cache_context.fingerprint,
+    }
+    legacy_entries = legacy_translation_cache_entry_count(translation_cache)
+    if legacy_entries:
+        print(f"⚠️ 已迁移但未复用来源不明的旧缓存: {legacy_entries} 条")
     if args.force:
         print("🧹 强制模式：忽略并清除内存中的翻译缓存")
-        translation_cache = {}
+        translation_cache = new_translation_cache()
 
     # 2. Identify tweets to process
     print("🔍 检查待翻译推文...")
@@ -143,6 +164,9 @@ def main():
             client_factory=_make_client,
             model=LLM_MODEL,
             max_retries=3,
+            metrics=metrics,
+            cache_context=cache_context,
+            cache_results=True,
         )
 
     batch_results = translate_batch(
@@ -155,6 +179,9 @@ def main():
         batch_size=BATCH_SIZE,
         max_retries=3,
         fallback_translate=_fallback,
+        metrics=metrics,
+        cache_context=cache_context,
+        cache_results=True,
     )
 
     new_translations = []
@@ -177,7 +204,14 @@ def main():
         save_json(translated_file_path, current_data)
 
         # Save updated cache to disk
-        save_json(translation_cache_path(cache_dir), translation_cache)
+        save_json(translation_cache_path(cache_dir), normalize_translation_cache(translation_cache))
+
+        print(
+            f"   缓存命中/未命中/跳过: {metrics.get('cache_hits', 0)} / "
+            f"{metrics.get('cache_misses', 0)} / {metrics.get('cache_bypassed', 0)}"
+        )
+        print(f"   当前缓存条目: {translation_cache_entry_count(translation_cache, cache_context)}")
+        print(f"   缓存配置指纹: {metrics['cache_fingerprint']}")
 
         if args.force:
             print(f"✅ 重新翻译完成！共处理 {len(new_translations)} 条")

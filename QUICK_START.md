@@ -170,6 +170,8 @@ xcrawler fetch  # 需要翻译所有推文
 xcrawler fetch  # 自动使用缓存，跳过已翻译内容
 ```
 
+缓存会按 Provider、模型、目标语言和 Prompt 版本隔离。切换模型或翻译策略后会自动产生未命中，避免复用来源不一致的旧译文；`xcrawler translate --force` 会绕过旧缓存并重建当前配置缓存。
+
 ### 减少 API 调用
 
 ```bash

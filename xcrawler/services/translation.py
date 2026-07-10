@@ -3,20 +3,57 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
+from typing import Any
 
+from xcrawler.services.translation_cache import (
+    TranslationCacheContext,
+    ensure_translation_cache,
+    get_cached_translation,
+    set_cached_translation,
+)
 from xcrawler.utils.text import detect_language
 
 ClientFactory = Callable[[], object]
+TranslationMetrics = dict[str, int | str]
 
 
-def _record_usage(metrics: dict[str, int] | None, response: object) -> None:
+def _increment_metric(metrics: TranslationMetrics | None, key: str, amount: int = 1) -> None:
     if metrics is None:
         return
-    metrics["llm_calls"] = metrics.get("llm_calls", 0) + 1
+    current = metrics.get(key, 0)
+    metrics[key] = (current if isinstance(current, int) else 0) + amount
+
+
+def _record_usage(metrics: TranslationMetrics | None, response: object) -> None:
+    if metrics is None:
+        return
+    _increment_metric(metrics, "llm_calls")
     usage = getattr(response, "usage", None)
     total_tokens = getattr(usage, "total_tokens", None)
     if isinstance(total_tokens, int):
-        metrics["total_tokens"] = metrics.get("total_tokens", 0) + total_tokens
+        _increment_metric(metrics, "total_tokens", total_tokens)
+
+
+def _cache_context(cache_context: TranslationCacheContext | None, model: str) -> TranslationCacheContext:
+    return cache_context or TranslationCacheContext(provider="unknown", model=model)
+
+
+def _record_cache_lookup(
+    metrics: TranslationMetrics | None,
+    context: TranslationCacheContext,
+    *,
+    enabled: bool,
+    hit: bool = False,
+) -> None:
+    if metrics is None:
+        return
+    metrics["cache_fingerprint"] = context.fingerprint
+    if not enabled:
+        _increment_metric(metrics, "cache_bypassed")
+    elif hit:
+        _increment_metric(metrics, "cache_hits")
+    else:
+        _increment_metric(metrics, "cache_misses")
 
 
 def parse_batch_response(response: str, expected_count: int) -> list[str]:
@@ -56,21 +93,33 @@ def translate_text(
     *,
     detected_lang: str | None,
     use_cache: bool,
-    cache: dict[str, str],
+    cache: dict[str, Any],
     client_factory: ClientFactory,
     model: str,
     max_retries: int,
-    metrics: dict[str, int] | None = None,
+    metrics: TranslationMetrics | None = None,
+    cache_context: TranslationCacheContext | None = None,
+    cache_results: bool | None = None,
 ) -> str | None:
-    if use_cache and text in cache:
-        return cache[text]
+    context = _cache_context(cache_context, model)
+    ensure_translation_cache(cache)
+    should_cache_results = use_cache if cache_results is None else cache_results
+
+    if use_cache:
+        cached = get_cached_translation(cache, text, context)
+        if cached is not None:
+            _record_cache_lookup(metrics, context, enabled=True, hit=True)
+            return cached
+        _record_cache_lookup(metrics, context, enabled=True)
+    else:
+        _record_cache_lookup(metrics, context, enabled=False)
 
     if not detected_lang:
         detected_lang = detect_language(text)
 
     if detected_lang in ("zh-cn", "zh"):
-        if use_cache:
-            cache[text] = text
+        if should_cache_results:
+            set_cached_translation(cache, text, text, context)
         return text
 
     prompt = f"""
@@ -99,8 +148,8 @@ def translate_text(
             )
             _record_usage(metrics, response)
             result = response.choices[0].message.content.strip()
-            if use_cache:
-                cache[text] = result
+            if should_cache_results:
+                set_cached_translation(cache, text, result, context)
             return result
         except Exception as e:
             if attempt < max_retries - 1:
@@ -118,16 +167,22 @@ def translate_batch(
     *,
     detected_langs: list[str | None] | None,
     use_cache: bool,
-    cache: dict[str, str],
+    cache: dict[str, Any],
     client_factory: ClientFactory,
     model: str,
     batch_size: int,
     max_retries: int,
     fallback_translate: Callable[[str, str | None, bool], str | None],
-    metrics: dict[str, int] | None = None,
+    metrics: TranslationMetrics | None = None,
+    cache_context: TranslationCacheContext | None = None,
+    cache_results: bool | None = None,
 ) -> list[str | None]:
     if batch_size < 1:
         raise ValueError("batch_size must be >= 1")
+
+    context = _cache_context(cache_context, model)
+    ensure_translation_cache(cache)
+    should_cache_results = use_cache if cache_results is None else cache_results
 
     n = len(texts)
     langs = [None] * n if detected_langs is None else list(detected_langs)
@@ -140,17 +195,23 @@ def translate_batch(
     for i, text in enumerate(texts):
         lang = langs[i]
 
-        if use_cache and text in cache:
-            results[i] = cache[text]
-            continue
+        if use_cache:
+            cached = get_cached_translation(cache, text, context)
+            if cached is not None:
+                _record_cache_lookup(metrics, context, enabled=True, hit=True)
+                results[i] = cached
+                continue
+            _record_cache_lookup(metrics, context, enabled=True)
+        else:
+            _record_cache_lookup(metrics, context, enabled=False)
 
         if not lang:
             lang = detect_language(text)
             langs[i] = lang
 
         if lang in ("zh-cn", "zh"):
-            if use_cache:
-                cache[text] = text
+            if should_cache_results:
+                set_cached_translation(cache, text, text, context)
             results[i] = text
             continue
 
@@ -210,8 +271,8 @@ def translate_batch(
 
                 for j, idx in enumerate(batch_indices):
                     results[idx] = parsed[j]
-                    if use_cache:
-                        cache[texts[idx]] = parsed[j]
+                    if should_cache_results:
+                        set_cached_translation(cache, texts[idx], parsed[j], context)
                     translated_count += 1
                 print(f" ✅ 已翻译 {translated_count}/{len(to_translate_texts)} 条")
                 break
@@ -221,8 +282,7 @@ def translate_batch(
                     time.sleep(2 ** attempt)
                 else:
                     print("❌ 批量翻译失败，回退到单条翻译...")
-                    if metrics is not None:
-                        metrics["failed_batches"] = metrics.get("failed_batches", 0) + 1
+                    _increment_metric(metrics, "failed_batches")
                     for idx in batch_indices:
                         results[idx] = fallback_translate(texts[idx], langs[idx], use_cache)
 

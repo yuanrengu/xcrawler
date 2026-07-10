@@ -130,13 +130,17 @@ class TestTranslationCache:
 
     def test_save_and_load(self, tmp_path):
         import main
+        from xcrawler.services.translation_cache import TRANSLATION_CACHE_SCHEMA_VERSION
+
         original_dir = main.CACHE_DIR
         main.CACHE_DIR = str(tmp_path)
         try:
             cache = {"hello": "你好", "world": "世界"}
             main.save_translation_cache(cache)
             loaded = main.load_translation_cache()
-            assert loaded == cache
+            assert loaded["version"] == TRANSLATION_CACHE_SCHEMA_VERSION
+            assert loaded["entries"] == {}
+            assert loaded["legacy_entries"] == cache
         finally:
             main.CACHE_DIR = original_dir
 
@@ -146,7 +150,7 @@ class TestTranslationCache:
         main.CACHE_DIR = str(tmp_path)
         try:
             loaded = main.load_translation_cache()
-            assert loaded == {}
+            assert loaded == {"version": 2, "entries": {}, "legacy_entries": {}}
         finally:
             main.CACHE_DIR = original_dir
 
@@ -165,32 +169,101 @@ class TestTranslationCache:
             main.CACHE_DIR = original_dir
 
 
+class TestTranslationCacheSchema:
+    """测试版本化翻译缓存和配置隔离。"""
+
+    def test_legacy_cache_is_preserved_but_not_reused(self):
+        from xcrawler.services.translation_cache import (
+            TranslationCacheContext,
+            get_cached_translation,
+            normalize_translation_cache,
+        )
+
+        cache = normalize_translation_cache({"hello": "你好"})
+        context = TranslationCacheContext(provider="deepseek", model="deepseek-chat")
+
+        assert cache["legacy_entries"] == {"hello": "你好"}
+        assert cache["entries"] == {}
+        assert get_cached_translation(cache, "hello", context) is None
+
+    @pytest.mark.parametrize("changed_context", [
+        {"provider": "openai", "model": "deepseek-chat"},
+        {"provider": "deepseek", "model": "deepseek-reasoner"},
+        {"provider": "deepseek", "model": "deepseek-chat", "target_language": "en"},
+        {"provider": "deepseek", "model": "deepseek-chat", "prompt_version": "social-media-zh-v2"},
+    ])
+    def test_cache_misses_when_context_changes(self, changed_context):
+        from xcrawler.services.translation_cache import (
+            TranslationCacheContext,
+            get_cached_translation,
+            new_translation_cache,
+            set_cached_translation,
+        )
+
+        original_context = TranslationCacheContext(provider="deepseek", model="deepseek-chat")
+        cache = new_translation_cache()
+        set_cached_translation(cache, "hello", "你好", original_context)
+
+        assert get_cached_translation(cache, "hello", TranslationCacheContext(**changed_context)) is None
+        assert get_cached_translation(cache, "hello", original_context) == "你好"
+
+    def test_context_fingerprint_is_stable_and_configuration_specific(self):
+        from xcrawler.services.translation_cache import TranslationCacheContext
+
+        first = TranslationCacheContext(provider="deepseek", model="deepseek-chat")
+        same = TranslationCacheContext(provider="deepseek", model="deepseek-chat")
+        changed = TranslationCacheContext(provider="deepseek", model="deepseek-reasoner")
+
+        assert first.fingerprint == same.fingerprint
+        assert first.fingerprint != changed.fingerprint
+
+    def test_malformed_current_schema_is_safely_normalized(self):
+        from xcrawler.services.translation_cache import ensure_translation_cache
+
+        cache = {"version": 2, "entries": [], "legacy_entries": None}
+
+        assert ensure_translation_cache(cache) == {"version": 2, "entries": {}, "legacy_entries": {}}
+
+
 class TestDeepseekTranslate:
     """测试 deepseek_translate 单条翻译"""
 
     def test_cached_text_returns_immediately(self):
         import main
-        main.translation_cache = {"hello": "你好"}
+        from xcrawler.services.translation_cache import new_translation_cache, set_cached_translation
+
+        main.translation_cache = new_translation_cache()
+        set_cached_translation(main.translation_cache, "hello", "你好", main._translation_cache_context())
         result = main.deepseek_translate("hello")
         assert result == "你好"
 
     def test_chinese_text_passthrough(self):
         import main
-        main.translation_cache = {}
+        from xcrawler.services.translation_cache import get_cached_translation, new_translation_cache
+
+        main.translation_cache = new_translation_cache()
         result = main.deepseek_translate("这是中文", detected_lang="zh-cn")
         assert result == "这是中文"
-        assert main.translation_cache["这是中文"] == "这是中文"
+        assert get_cached_translation(
+            main.translation_cache,
+            "这是中文",
+            main._translation_cache_context(),
+        ) == "这是中文"
 
     def test_chinese_zh_lang(self):
         import main
-        main.translation_cache = {}
+        from xcrawler.services.translation_cache import new_translation_cache
+
+        main.translation_cache = new_translation_cache()
         result = main.deepseek_translate("中文推文", detected_lang="zh")
         assert result == "中文推文"
 
     @patch("main._get_ds_client")
     def test_api_call(self, mock_client):
         import main
-        main.translation_cache = {}
+        from xcrawler.services.translation_cache import get_cached_translation, new_translation_cache
+
+        main.translation_cache = new_translation_cache()
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
         mock_response.choices[0].message.content = "你好世界"
@@ -198,12 +271,18 @@ class TestDeepseekTranslate:
 
         result = main.deepseek_translate("Hello world", detected_lang="en")
         assert result == "你好世界"
-        assert main.translation_cache["Hello world"] == "你好世界"
+        assert get_cached_translation(
+            main.translation_cache,
+            "Hello world",
+            main._translation_cache_context(),
+        ) == "你好世界"
 
     @patch("main._get_ds_client")
     def test_api_failure_returns_none(self, mock_client):
         import main
-        main.translation_cache = {}
+        from xcrawler.services.translation_cache import new_translation_cache
+
+        main.translation_cache = new_translation_cache()
         mock_client.return_value.chat.completions.create.side_effect = Exception("API error")
 
         result = main.deepseek_translate("Hello", detected_lang="en", use_cache=False)
@@ -215,19 +294,29 @@ class TestDeepseekTranslateBatch:
 
     def test_all_cached(self):
         import main
-        main.translation_cache = {"a": "甲", "b": "乙"}
+        from xcrawler.services.translation_cache import new_translation_cache, set_cached_translation
+
+        main.translation_cache = new_translation_cache()
+        context = main._translation_cache_context()
+        set_cached_translation(main.translation_cache, "a", "甲", context)
+        set_cached_translation(main.translation_cache, "b", "乙", context)
         result = main.deepseek_translate_batch(["a", "b"])
         assert result == ["甲", "乙"]
 
     def test_chinese_passthrough(self):
         import main
-        main.translation_cache = {}
+        from xcrawler.services.translation_cache import new_translation_cache
+
+        main.translation_cache = new_translation_cache()
         result = main.deepseek_translate_batch(["中文"], detected_langs=["zh-cn"])
         assert result == ["中文"]
 
     def test_mixed_cache_and_new(self):
         import main
-        main.translation_cache = {"cached": "已缓存"}
+        from xcrawler.services.translation_cache import new_translation_cache, set_cached_translation
+
+        main.translation_cache = new_translation_cache()
+        set_cached_translation(main.translation_cache, "cached", "已缓存", main._translation_cache_context())
         with patch("main._get_ds_client") as mock_client:
             mock_resp = MagicMock()
             mock_resp.choices = [MagicMock()]
@@ -280,7 +369,8 @@ class TestDeepseekTranslateBatch:
         )
 
         assert result == ["fallback:hello", "fallback:world"]
-        assert cache == {}
+        assert cache["entries"] == {}
+        assert cache["legacy_entries"] == {}
         assert metrics["failed_batches"] == 1
 
 
@@ -1539,7 +1629,15 @@ class TestTranslationService:
 
     def test_translate_text_uses_cache(self):
         from xcrawler.services.translation import translate_text
-        cache = {"hello": "你好"}
+        from xcrawler.services.translation_cache import (
+            TranslationCacheContext,
+            new_translation_cache,
+            set_cached_translation,
+        )
+
+        context = TranslationCacheContext(provider="test", model="test")
+        cache = new_translation_cache()
+        set_cached_translation(cache, "hello", "你好", context)
 
         def fail_client():
             raise AssertionError("cached text should not call client")
@@ -1552,6 +1650,7 @@ class TestTranslationService:
             client_factory=fail_client,
             model="test",
             max_retries=1,
+            cache_context=context,
         ) == "你好"
 
     def test_translate_batch_records_usage_metrics(self):
@@ -1581,6 +1680,83 @@ class TestTranslationService:
         assert result == ["你好"]
         assert metrics["llm_calls"] == 1
         assert metrics["total_tokens"] == 11
+
+    def test_translate_batch_records_cache_hits_misses_and_fingerprint(self):
+        from xcrawler.services.translation import translate_batch
+        from xcrawler.services.translation_cache import (
+            TranslationCacheContext,
+            new_translation_cache,
+            set_cached_translation,
+        )
+
+        context = TranslationCacheContext(provider="deepseek", model="test")
+        cache = new_translation_cache()
+        set_cached_translation(cache, "cached", "已缓存", context)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[1] 新翻译"
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_response
+        metrics = {}
+
+        result = translate_batch(
+            ["cached", "new"],
+            detected_langs=["en", "en"],
+            use_cache=True,
+            cache=cache,
+            client_factory=lambda: client,
+            model="test",
+            batch_size=10,
+            max_retries=1,
+            fallback_translate=lambda text, lang, use_cache: None,
+            metrics=metrics,
+            cache_context=context,
+        )
+
+        assert result == ["已缓存", "新翻译"]
+        assert metrics["cache_hits"] == 1
+        assert metrics["cache_misses"] == 1
+        assert metrics["cache_fingerprint"] == context.fingerprint
+
+    def test_force_mode_bypasses_old_entry_and_rebuilds_cache(self):
+        from xcrawler.services.translation import translate_batch
+        from xcrawler.services.translation_cache import (
+            TranslationCacheContext,
+            get_cached_translation,
+            new_translation_cache,
+            set_cached_translation,
+        )
+
+        context = TranslationCacheContext(provider="deepseek", model="test")
+        cache = new_translation_cache()
+        set_cached_translation(cache, "hello", "旧翻译", context)
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "[1] 新翻译"
+        client = MagicMock()
+        client.chat.completions.create.return_value = mock_response
+        metrics = {}
+
+        result = translate_batch(
+            ["hello"],
+            detected_langs=["en"],
+            use_cache=False,
+            cache=cache,
+            client_factory=lambda: client,
+            model="test",
+            batch_size=1,
+            max_retries=1,
+            fallback_translate=lambda text, lang, use_cache: None,
+            metrics=metrics,
+            cache_context=context,
+            cache_results=True,
+        )
+
+        assert result == ["新翻译"]
+        assert get_cached_translation(cache, "hello", context) == "新翻译"
+        assert metrics["cache_bypassed"] == 1
 
 
 class TestXApiClient:

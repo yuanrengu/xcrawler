@@ -611,7 +611,7 @@ cp cache_backup/*.json cache/
 - ✅ **自动语言检测**：使用 `langdetect` 库自动识别推文语言
 - ✅ **智能翻译策略**：根据检测语言使用不同的翻译提示词
 - ✅ **语言分布统计**：显示推文的语言构成分析
-- ✅ **翻译缓存机制**：避免重复翻译，节省 API 调用
+- ✅ **版本化翻译缓存**：按 Provider、模型、目标语言和 Prompt 版本隔离，避免切换配置后误用旧译文
 - ✅ **网络用语适配**：针对不同语言的网络用语和梗进行本地化翻译
 
 ### 输出示例
@@ -653,9 +653,11 @@ cp cache_backup/*.json cache/
 python3 translate_sync.py
 
 # 2. 强制重翻（--force）
-# 忽略缓存，强制重新翻译所有推文（用于修复翻译或语言检测问题）
+# 忽略旧缓存、强制重新翻译所有推文，并重建当前配置的缓存
 python3 translate_sync.py --force
 ```
+
+`translation_cache.json` 使用版本化 Schema。旧版 `{原文: 译文}` 缓存会迁移到 `legacy_entries` 留作人工恢复，但由于缺少 Provider、模型和 Prompt 来源信息，默认不会继续命中。运行日志会显示缓存配置指纹、命中数和未命中数。
 
 
 ## 📊 输出示例

@@ -4,6 +4,7 @@ import argparse
 import os
 from collections import Counter
 from datetime import datetime
+from typing import Any
 
 import requests
 
@@ -17,6 +18,13 @@ from xcrawler.services.sampling import sample_evenly
 from xcrawler.services.translation import (
     translate_batch,
     translate_text,
+)
+from xcrawler.services.translation_cache import (
+    TranslationCacheContext,
+    legacy_translation_cache_entry_count,
+    new_translation_cache,
+    normalize_translation_cache,
+    translation_cache_entry_count,
 )
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
@@ -76,16 +84,37 @@ HEADERS: dict[str, str] = {}
 ensure_dir(CACHE_DIR)
 
 # 翻译缓存
-translation_cache: dict[str, str] = {}
-translation_metrics: dict[str, int] = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
+translation_cache: dict[str, Any] = new_translation_cache()
+
+
+def _translation_cache_context() -> TranslationCacheContext:
+    return TranslationCacheContext(provider="deepseek", model=LLM_MODEL)
+
+
+def _new_translation_metrics() -> dict[str, int | str]:
+    return {
+        "llm_calls": 0,
+        "total_tokens": 0,
+        "failed_batches": 0,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "cache_bypassed": 0,
+        "cache_fingerprint": _translation_cache_context().fingerprint,
+    }
+
+
+translation_metrics: dict[str, int | str] = _new_translation_metrics()
+
 
 def load_translation_cache():
     """加载翻译缓存"""
-    return load_json(translation_cache_path(CACHE_DIR), default={})
+    return normalize_translation_cache(load_json(translation_cache_path(CACHE_DIR), default={}))
+
 
 def save_translation_cache(cache):
     """保存翻译缓存"""
-    save_json(translation_cache_path(CACHE_DIR), cache)
+    save_json(translation_cache_path(CACHE_DIR), normalize_translation_cache(cache))
+
 
 def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = True) -> str | None:
     """智能翻译单条推文到中文，支持缓存和重试（保留向后兼容）"""
@@ -98,6 +127,7 @@ def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = T
         model=LLM_MODEL,
         max_retries=MAX_RETRIES,
         metrics=translation_metrics,
+        cache_context=_translation_cache_context(),
     )
 
 
@@ -122,6 +152,7 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         max_retries=MAX_RETRIES,
         fallback_translate=deepseek_translate,
         metrics=translation_metrics,
+        cache_context=_translation_cache_context(),
     )
 
 
@@ -204,13 +235,18 @@ def main():
     
     # 加载翻译缓存
     translation_cache = load_translation_cache()
-    translation_metrics = {"llm_calls": 0, "total_tokens": 0, "failed_batches": 0}
-    print(f"💾 已加载翻译缓存: {len(translation_cache)} 条\n")
+    translation_metrics = _new_translation_metrics()
+    cache_entries = translation_cache_entry_count(translation_cache, _translation_cache_context())
+    legacy_entries = legacy_translation_cache_entry_count(translation_cache)
+    print(f"💾 已加载当前配置翻译缓存: {cache_entries} 条")
+    if legacy_entries:
+        print(f"⚠️ 已迁移但未复用来源不明的旧缓存: {legacy_entries} 条")
+    print(f"   缓存配置指纹: {translation_metrics['cache_fingerprint']}\n")
     print_execution_plan(
         max_pages=MAX_PAGES,
         batch_size=BATCH_SIZE,
         no_translate=args.no_translate,
-        cache_size=len(translation_cache),
+        cache_size=cache_entries,
         analysis_limit=ANALYSIS_LIMIT,
     )
     
@@ -312,6 +348,10 @@ def main():
             print(f"   Token 用量: {translation_metrics['total_tokens']}")
         if translation_metrics.get("failed_batches"):
             print(f"   失败批次: {translation_metrics['failed_batches']}")
+        print(
+            f"   缓存命中/未命中: {translation_metrics['cache_hits']} / "
+            f"{translation_metrics['cache_misses']}"
+        )
         print()
 
         # 保存失败列表供下次重试
@@ -394,6 +434,9 @@ def main():
                 "translation_llm_calls": translation_metrics["llm_calls"],
                 "translation_total_tokens": translation_metrics.get("total_tokens") or None,
                 "translation_failed_batches": translation_metrics["failed_batches"],
+                "translation_cache_hits": translation_metrics["cache_hits"],
+                "translation_cache_misses": translation_metrics["cache_misses"],
+                "translation_cache_fingerprint": translation_metrics["cache_fingerprint"],
                 "clusters": cluster_num,
                 "language_distribution": dict(lang_stats)
             },
