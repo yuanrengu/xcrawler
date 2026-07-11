@@ -27,9 +27,11 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
+from xcrawler.services.tweets import merge_translated_tweets, merge_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
+from xcrawler.utils.optional_dependencies import modules_available
 from xcrawler.utils.text import clean_text, detect_language
 
 _config = load_config()
@@ -46,15 +48,21 @@ TARGET_USERNAME = _config.target_username
 MAX_PAGES = 50
 MAX_RETRIES = 3
 MAX_WORKERS = 5
-CACHE_DIR = "cache"
+CACHE_DIR = _config.cache_dir
 BATCH_SIZE = 10
 ANALYSIS_LIMIT = 1000
+
+
+def ml_analysis_available() -> bool:
+    return modules_available("sentence_transformers", "sklearn")
 
 
 def parse_args():
     """解析 CLI 参数，覆盖 .env 默认值"""
     parser = argparse.ArgumentParser(description="Twitter 用户数据抓取 + 翻译 + 聚类分析")
-    parser.add_argument("-u", "--user", help="目标用户名（覆盖 .env 中的 TARGET_USERNAME）")
+    parser.add_argument(
+        "-u", "--user", type=cli_validation.x_username, help="目标用户名（覆盖 .env 中的 TARGET_USERNAME）"
+    )
     parser.add_argument("--pages", type=cli_validation.positive_int, help=f"抓取页数，每页100条（默认 {MAX_PAGES}）")
     parser.add_argument("--batch-size", type=cli_validation.positive_int, help=f"每批翻译条数（默认 {BATCH_SIZE}）")
     parser.add_argument("--model", help=f"LLM 模型名（默认 {LLM_MODEL}）")
@@ -62,6 +70,7 @@ def parse_args():
     parser.add_argument("--analysis-limit", type=cli_validation.positive_int, default=ANALYSIS_LIMIT,
                         help=f"聚类和画像最多分析的翻译推文数（默认 {ANALYSIS_LIMIT}）")
     parser.add_argument("--no-translate", action="store_true", help="跳过翻译，仅抓取")
+    parser.add_argument("--replace", action="store_true", help="使用本次结果替换历史快照（默认安全合并）")
     parser.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
                         default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
     parser.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
@@ -303,8 +312,12 @@ def main():
             print("❌ 没有抓取到任何推文，请检查用户是否存在或是否有权限")
             return 1
         
-        # 保存原始推文
+        # 保存原始推文：默认保留历史，只有 --replace 显式覆盖。
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
+        existing_raw = load_json(raw_file, default=[])
+        if not isinstance(existing_raw, list):
+            raise ValueError(f"原始推文文件必须是 JSON 数组: {raw_file}")
+        raw_tweets = raw_tweets if args.replace else merge_tweets(existing_raw, raw_tweets)
         save_json(raw_file, raw_tweets)
         print(f"💾 原始推文已保存至: {raw_file}\n")
 
@@ -404,12 +417,22 @@ def main():
 
         # 保存翻译结果
         translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
+        existing_translated = load_json(translated_file, default=[])
+        if not isinstance(existing_translated, list):
+            raise ValueError(f"翻译文件必须是 JSON 数组: {translated_file}")
+        if not args.replace:
+            translated_data = merge_translated_tweets(existing_translated, translated_data)
         save_json(translated_file, translated_data)
         print(f"💾 翻译结果已保存至: {translated_file}")
         print(f"✅ 成功翻译 {len(translated)} 条推文\n")
 
         if len(translated) < 10:
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")
+            return 0
+
+        if not ml_analysis_available():
+            print("⚠️ 未安装 ML 可选依赖，已完成抓取和翻译，跳过向量聚类与画像生成。")
+            print("   如需完整分析，请运行: python3 -m pip install -e '.[ml]'")
             return 0
 
         analysis_texts = sample_evenly(translated, ANALYSIS_LIMIT)

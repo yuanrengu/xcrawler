@@ -1,20 +1,20 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "xcrawler"
-version = "0.3.0"
+version = "0.4.0"
 description = "X/Twitter user profile analysis toolkit for fetching, translating, analyzing, and reporting public posts."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
   { name = "yuanrengu" }
 ]
+keywords = ["twitter", "x", "social-media", "user-profile", "llm", "analysis"]
 classifiers = [
   "Development Status :: 3 - Alpha",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -55,7 +55,10 @@ test = [
 
 [project.urls]
 Homepage = "https://github.com/yuanrengu/xcrawler"
+Documentation = "https://github.com/yuanrengu/xcrawler#readme"
+Changelog = "https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md"
 Issues = "https://github.com/yuanrengu/xcrawler/issues"
+Source = "https://github.com/yuanrengu/xcrawler"
 
 [project.scripts]
 xcrawler = "xcrawler.cli:main"

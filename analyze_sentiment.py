@@ -17,6 +17,7 @@ from xcrawler.services.analysis_runs import (
     create_analysis_run,
     partial_analysis_run,
     record_analysis_run,
+    record_failed_analysis_run,
 )
 from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
@@ -67,7 +68,7 @@ def parse_sentiment_response(response: str, expected_count: int) -> list[str]:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="推文情感分析：批量打分 + 趋势图")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
     parser.add_argument("--top", type=cli_validation.positive_int, default=10, help="显示 Top N 正/负面推文")
@@ -220,8 +221,6 @@ def main():
         print_missing_optional_dependency("matplotlib", "viz", feature="情感分析图表")
         return 1
 
-    # 初始化 LLM
-    provider = create_provider()
     model = _config.llm_model
     store = create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path)
     run = create_analysis_run(
@@ -230,19 +229,25 @@ def main():
         model=model,
         params={"top": args.top},
         input_range={"translated_records": len(translated_data), "texts": len(texts), "batch_size": 20},
-        config={"provider": provider.name},
+        config={"provider": "deepseek"},
     )
-    call_recorder = LLMCallRecorder(
-        store,
-        pricing=_config.llm_pricing,
-        analysis_run_id=run.id,
-        username=TARGET_USERNAME,
-    )
-    observed_provider = ObservedLLMProvider(
-        provider,
-        call_recorder,
-        operation="sentiment_analysis",
-    )
+    try:
+        provider = create_provider()
+        call_recorder = LLMCallRecorder(
+            store,
+            pricing=_config.llm_pricing,
+            analysis_run_id=run.id,
+            username=TARGET_USERNAME,
+        )
+        observed_provider = ObservedLLMProvider(
+            provider,
+            call_recorder,
+            operation="sentiment_analysis",
+        )
+    except Exception as error:
+        record_failed_analysis_run(store, run, error)
+        print(f"❌ 情感分析初始化失败: {error}")
+        return 1
 
     print("📋 执行计划:")
     print(f"   输入文本: {len(texts)} 条")
@@ -286,8 +291,13 @@ def main():
     # 生成图表
     print("\n🎨 生成图表...")
     tz_offset = _config.timezone_offset
-    chart_sentiment_timeline(sentiment_inputs, sentiments, output_dir, TARGET_USERNAME, tz_offset)
-    chart_sentiment_pie(sentiments, output_dir, TARGET_USERNAME)
+    try:
+        chart_sentiment_timeline(sentiment_inputs, sentiments, output_dir, TARGET_USERNAME, tz_offset)
+        chart_sentiment_pie(sentiments, output_dir, TARGET_USERNAME)
+    except Exception as error:
+        record_failed_analysis_run(store, run, error)
+        print(f"❌ 情感分析图表生成失败: {error}")
+        return 1
 
     # 保存结果
     result = {
@@ -310,11 +320,16 @@ def main():
         ],
     }
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_sentiment.json")
-    save_json(result_file, result)
-    if run_stats["failed_batches"]:
-        record_analysis_run(store, partial_analysis_run(run, failed_batches=run_stats["failed_batches"]))
-    else:
-        record_analysis_run(store, complete_analysis_run(run))
+    try:
+        save_json(result_file, result)
+        if run_stats["failed_batches"]:
+            record_analysis_run(store, partial_analysis_run(run, failed_batches=run_stats["failed_batches"]))
+        else:
+            record_analysis_run(store, complete_analysis_run(run))
+    except Exception as error:
+        record_failed_analysis_run(store, run, error)
+        print(f"❌ 情感分析结果保存失败: {error}")
+        return 1
     print(f"\n💾 结果已保存: {result_file}")
     call_summary = call_recorder.summary()
     print(

@@ -22,7 +22,7 @@ def _run_script(module_name: str, args: Sequence[str]) -> int:
 
 
 def _add_common_options(parser: argparse.ArgumentParser, *, model: bool = False) -> None:
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help="缓存目录")
     if model:
         parser.add_argument("--model", help="LLM 模型名")
@@ -76,6 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--batch-size", type=cli_validation.positive_int, help="每批翻译条数")
     fetch.add_argument("--analysis-limit", type=cli_validation.positive_int, help="聚类和画像最多分析的翻译推文数")
     fetch.add_argument("--no-translate", action="store_true", help="仅抓取不翻译")
+    fetch.add_argument("--replace", action="store_true", help="使用本次结果替换历史快照（默认安全合并）")
     fetch.set_defaults(handler=_handle_fetch)
 
     fetch_more = subparsers.add_parser("fetch-more", help="智能增量抓取新推文和历史推文")
@@ -84,6 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_more.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
     fetch_more.add_argument("--interval", type=cli_validation.non_negative_int, help="请求间隔秒数")
     fetch_more.set_defaults(handler=_handle_fetch_more)
+
+    demo = subparsers.add_parser("demo", help="无需 API Key 生成内置示例报告")
+    demo.add_argument("--output", help="示例数据和报告输出目录")
+    demo.set_defaults(handler=_handle_demo)
 
     translate = subparsers.add_parser("translate", help="同步或重翻已有原始推文")
     _add_common_options(translate)
@@ -153,6 +158,8 @@ def _handle_fetch(args: argparse.Namespace) -> int:
         forwarded.extend(["--analysis-limit", str(args.analysis_limit)])
     if args.no_translate:
         forwarded.append("--no-translate")
+    if args.replace:
+        forwarded.append("--replace")
     return _run_script("main", forwarded)
 
 
@@ -165,6 +172,13 @@ def _handle_fetch_more(args: argparse.Namespace) -> int:
     if args.interval is not None:
         forwarded.extend(["--interval", str(args.interval)])
     return _run_script("fetch_more_history", forwarded)
+
+
+def _handle_demo(args: argparse.Namespace) -> int:
+    forwarded: list[str] = []
+    if args.output:
+        forwarded.extend(["--output", args.output])
+    return _run_script("xcrawler.demo", forwarded)
 
 
 def _handle_translate(args: argparse.Namespace) -> int:

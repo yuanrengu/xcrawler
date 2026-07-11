@@ -448,6 +448,20 @@ class TestFetchMoreHistory:
         assert [tweet["id"] for tweet in merged] == ["3", "2", "1", "0"]
         assert merged[1]["text"] == "refreshed copy"
 
+    def test_merge_translations_retains_history_and_updates_matching_id(self):
+        from xcrawler.services.tweets import merge_translated_tweets
+
+        existing = [
+            {"tweet_id": "1", "translated": "old", "created_at": "2024-01-01T00:00:00Z"},
+            {"tweet_id": "0", "translated": "history", "created_at": "2023-01-01T00:00:00Z"},
+        ]
+        new = [{"tweet_id": "1", "translated": "new", "created_at": "2024-01-01T00:00:00Z"}]
+
+        merged = merge_translated_tweets(existing, new)
+
+        assert [item["tweet_id"] for item in merged] == ["1", "0"]
+        assert merged[0]["translated"] == "new"
+
     def test_main_incremental_save_keeps_existing_tweets(self, tmp_path, monkeypatch):
         import fetch_more_history
 
@@ -513,6 +527,87 @@ class TestFetchMoreHistory:
             assert [tweet["id"] for tweet in tweets] == ["2"]
         finally:
             fetch_more_history.REQUEST_INTERVAL = old_interval
+
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_network_failure_raises_after_retries(self, mock_get, mock_sleep):
+        import requests
+
+        import fetch_more_history
+
+        mock_get.side_effect = requests.exceptions.Timeout("timed out")
+
+        with pytest.raises(fetch_more_history.FetchError, match="重试 2 次后仍失败"):
+            fetch_more_history.fetch_tweets_generic(
+                "user-id",
+                {},
+                max_pages_limit=1,
+                max_retries=2,
+            )
+
+        assert mock_get.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_rate_limit_reset_in_past_retries_without_negative_sleep(self, mock_get, mock_sleep):
+        import fetch_more_history
+
+        limited = MagicMock(status_code=429, headers={"x-rate-limit-reset": "0"})
+        success = MagicMock(status_code=200, headers={})
+        success.raise_for_status = MagicMock()
+        success.json.return_value = {"data": [], "meta": {}}
+        mock_get.side_effect = [limited, success]
+
+        tweets, reached, pages = fetch_more_history.fetch_tweets_generic(
+            "user-id",
+            {},
+            max_pages_limit=1,
+            max_retries=2,
+        )
+
+        assert (tweets, reached, pages) == ([], False, 0)
+        mock_sleep.assert_called_once_with(0)
+
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_rate_limit_without_reset_header_uses_bounded_backoff(self, mock_get, mock_sleep):
+        import fetch_more_history
+
+        limited = MagicMock(status_code=429, headers={})
+        success = MagicMock(status_code=200, headers={})
+        success.raise_for_status = MagicMock()
+        success.json.return_value = {"data": [], "meta": {}}
+        mock_get.side_effect = [limited, success]
+
+        assert fetch_more_history.fetch_tweets_generic(
+            "user-id", {}, max_pages_limit=1, max_retries=2
+        ) == ([], False, 0)
+        mock_sleep.assert_called_once_with(1)
+
+    def test_main_returns_failure_when_incremental_fetch_fails(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        username = "alice"
+        (tmp_path / f"{username}_raw_tweets.json").write_text(json.dumps([
+            {"id": "1", "text": "existing", "created_at": "2025-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user=username,
+            pages=1,
+            target_date=None,
+            interval=0,
+            cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(
+            fetch_more_history,
+            "fetch_tweets_generic",
+            MagicMock(side_effect=fetch_more_history.FetchError("api down")),
+        )
+
+        assert fetch_more_history.main() == 1
 
 
 # ==============================
@@ -695,6 +790,21 @@ class TestAnalyzeNetworkMain:
         create_run.assert_not_called()
         assert "python3 -m pip install -e '.[viz]'" in capsys.readouterr().out
 
+    def test_chart_failure_is_recorded(self, tmp_path, monkeypatch):
+        import analyze_network
+
+        (tmp_path / "alice_raw_tweets.json").write_text(
+            '[{"id":"1","text":"#python","entities":{}}]', encoding="utf-8"
+        )
+        monkeypatch.setattr(analyze_network, "parse_args", lambda: self._args(tmp_path))
+        monkeypatch.setattr(analyze_network, "MATPLOTLIB_AVAILABLE", True)
+        monkeypatch.setattr(analyze_network, "chart_hashtag_bar", MagicMock(side_effect=OSError("disk full")))
+
+        assert analyze_network.main() == 1
+        runs = json.loads((tmp_path / "analysis_runs.json").read_text(encoding="utf-8"))
+        assert runs[-1]["status"] == "failed"
+        assert runs[-1]["error_type"] == "OSError"
+
 
 # ==============================
 # API 函数测试（mock）
@@ -815,6 +925,45 @@ class TestTranslateSyncImport:
             translate_sync.CACHE_DIR = old_cache_dir
             translate_sync.TARGET_USERNAME = old_username
 
+    def test_force_partial_failure_keeps_original_translation_file(self, tmp_path, monkeypatch):
+        import sys
+
+        import translate_sync
+
+        raw = [
+            {"id": "1", "text": "first long text", "created_at": "2024-01-02T00:00:00Z"},
+            {"id": "2", "text": "second long text", "created_at": "2024-01-01T00:00:00Z"},
+        ]
+        original = [
+            {
+                "tweet_id": "1",
+                "original": "first long text",
+                "translated": "旧译文一",
+                "detected_language": "en",
+                "created_at": "2024-01-02T00:00:00Z",
+            },
+            {
+                "tweet_id": "2",
+                "original": "second long text",
+                "translated": "旧译文二",
+                "detected_language": "en",
+                "created_at": "2024-01-01T00:00:00Z",
+            },
+        ]
+        raw_file = tmp_path / "alice_raw_tweets.json"
+        translated_file = tmp_path / "alice_translated.json"
+        raw_file.write_text(json.dumps(raw), encoding="utf-8")
+        translated_file.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", [
+            "translate_sync.py", "--user", "alice", "--cache-dir", str(tmp_path), "--force",
+        ])
+        monkeypatch.setattr(translate_sync, "translate_batch", MagicMock(return_value=["新译文一", None]))
+        monkeypatch.setattr(translate_sync, "detect_language", lambda text: "en")
+
+        assert translate_sync.main() == 1
+        assert json.loads(translated_file.read_text(encoding="utf-8")) == original
+        assert translated_file.with_suffix(".json.bak").exists()
+
 
 class TestAnalysisImports:
     """测试分析脚本导入不会过早初始化外部服务"""
@@ -834,6 +983,14 @@ class TestAnalysisImports:
         import analyze_pro
 
         assert callable(analyze_pro.main)
+
+    def test_main_ml_preflight_checks_both_optional_modules(self):
+        import main
+
+        with patch("main.modules_available", return_value=False) as available:
+            assert main.ml_analysis_available() is False
+
+        available.assert_called_once_with("sentence_transformers", "sklearn")
 
 
 class TestExportCsvHelpers:
@@ -1530,6 +1687,15 @@ class TestCli:
         assert result == 0
         assert calls == [("main", ["--user", "alice", "--pages", "2", "--no-translate"])]
 
+    def test_fetch_forwards_explicit_replace(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["fetch", "--replace"])
+
+        mock_run.assert_called_once_with("main", ["--replace"])
+
     def test_fetch_forwards_analysis_limit(self):
         from xcrawler import cli
 
@@ -1558,6 +1724,24 @@ class TestCli:
             cli.main(["fetch", "--pages", "0"])
 
         assert exc.value.code == 2
+
+    @pytest.mark.parametrize("username", ["../escape", "bad/name", "name-with-dash", "a" * 16])
+    def test_cli_rejects_invalid_x_username(self, username):
+        from xcrawler.cli import main
+
+        with pytest.raises(SystemExit) as exc:
+            main(["report", "--user", username])
+
+        assert exc.value.code == 2
+
+    def test_cli_normalizes_leading_at_in_username(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["report", "--user", "@alice"])
+
+        mock_run.assert_called_once_with("visualize", ["--user", "alice"])
 
     def test_interest_rejects_invalid_temperature(self):
         from xcrawler import cli
@@ -1619,6 +1803,24 @@ class TestCli:
 
         mock_run.assert_called_once_with("visualize", ["--format", "png"])
 
+    def test_demo_forwards_output(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["demo", "--output", "sample-output"])
+
+        mock_run.assert_called_once_with("xcrawler.demo", ["--output", "sample-output"])
+
+    def test_demo_generates_local_report_without_external_calls(self, tmp_path):
+        from xcrawler.demo import generate_demo
+
+        report = generate_demo(str(tmp_path))
+
+        assert report == str(tmp_path / "xcrawler_demo_report.html")
+        assert (tmp_path / "xcrawler_demo_raw_tweets.json").exists()
+        assert "Trustworthy AI" in (tmp_path / "xcrawler_demo_report.html").read_text(encoding="utf-8")
+
     def test_pyproject_has_console_script(self):
         with open("pyproject.toml", encoding="utf-8") as f:
             content = f.read()
@@ -1632,6 +1834,29 @@ class TestCli:
         # They should appear in optional-dependencies sections
         assert "torch>=2.0.0" in content
         assert "matplotlib>=3.7.0" in content
+
+
+class TestPathValidation:
+    """测试用户名派生路径不能逃逸缓存目录。"""
+
+    def test_cache_path_accepts_valid_username(self, tmp_path):
+        from xcrawler.paths import cache_path
+
+        assert cache_path(str(tmp_path), "alice_1", "raw.json") == str(tmp_path / "alice_1_raw.json")
+
+    @pytest.mark.parametrize("username", ["../escape", "bad/name", "a" * 16])
+    def test_cache_path_rejects_invalid_username(self, tmp_path, username):
+        from xcrawler.paths import cache_path
+
+        with pytest.raises(ValueError, match="X 用户名"):
+            cache_path(str(tmp_path), username, "raw.json")
+
+    @pytest.mark.parametrize("suffix", ["", "../raw.json", "/tmp/raw.json"])
+    def test_cache_path_rejects_unsafe_suffix(self, tmp_path, suffix):
+        from xcrawler.paths import cache_path
+
+        with pytest.raises(ValueError, match="文件后缀"):
+            cache_path(str(tmp_path), "alice", suffix)
 
 
 class TestConfigValidation:
@@ -1660,6 +1885,28 @@ class TestConfigValidation:
 
         assert config.storage_backend == "sqlite"
         assert config.sqlite_path == "state/xcrawler.db"
+
+    @pytest.mark.parametrize("name,value", [
+        ("TARGET_DATE", "2024/01/01"),
+        ("TIMEZONE_OFFSET", "tomorrow"),
+        ("TIMEZONE_OFFSET", "25"),
+        ("STORAGE_BACKEND", "postgres"),
+        ("TARGET_USERNAME", "../escape"),
+    ])
+    def test_load_config_rejects_invalid_environment_values(self, monkeypatch, name, value):
+        from xcrawler.config import ConfigError, load_config
+
+        monkeypatch.setenv(name, value)
+
+        with pytest.raises(ConfigError):
+            load_config()
+
+    def test_load_config_reads_cache_dir(self, monkeypatch):
+        from xcrawler.config import load_config
+
+        monkeypatch.setenv("CACHE_DIR", "state/cache")
+
+        assert load_config().cache_dir == "state/cache"
 
 
 class TestAnalysisRuns:
@@ -1751,6 +1998,36 @@ class TestSentimentFailures:
         assert analyze_sentiment.main() == 1
         create_provider.assert_not_called()
         assert "python3 -m pip install -e '.[viz]'" in capsys.readouterr().out
+
+    def test_provider_initialization_failure_is_recorded(self, tmp_path, monkeypatch):
+        import analyze_sentiment
+
+        records = [
+            {
+                "tweet_id": str(index),
+                "original": f"original {index}",
+                "translated": f"translated {index}",
+                "detected_language": "en",
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+            for index in range(5)
+        ]
+        (tmp_path / "alice_translated.json").write_text(json.dumps(records), encoding="utf-8")
+        monkeypatch.setattr(analyze_sentiment, "parse_args", lambda: SimpleNamespace(
+            user="alice",
+            cache_dir=str(tmp_path),
+            output=str(tmp_path / "charts"),
+            top=10,
+            storage_backend="json",
+            sqlite_path=None,
+        ))
+        monkeypatch.setattr(analyze_sentiment, "MATPLOTLIB_AVAILABLE", True)
+        monkeypatch.setattr(analyze_sentiment, "create_provider", MagicMock(side_effect=RuntimeError("missing key")))
+
+        assert analyze_sentiment.main() == 1
+        runs = json.loads((tmp_path / "analysis_runs.json").read_text(encoding="utf-8"))
+        assert runs[-1]["status"] == "failed"
+        assert runs[-1]["error_type"] == "RuntimeError"
 
     def test_failed_batch_stays_unknown(self):
         from analyze_sentiment import batch_sentiment

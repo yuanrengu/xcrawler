@@ -267,7 +267,7 @@ def save_analysis_result(result: dict[str, Any], cache_dir: str = "cache", usern
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AI 驱动的专业兴趣画像分析")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--model", help=f"LLM 模型名（默认 {MODEL}）")
     parser.add_argument("--temperature", type=cli_validation.temperature, default=0.2, help="模型温度（默认 0.2，范围 0-2）")
     parser.add_argument("--limit", type=cli_validation.positive_int, default=300, help="最多分析的翻译文本数（默认 300）")
@@ -285,7 +285,7 @@ def main():
         TARGET_USERNAME = args.user
     if args.model:
         MODEL = args.model
-    cache_dir = args.cache_dir or "cache"
+    cache_dir = args.cache_dir or _config.cache_dir
 
     print("=" * 60)
     print("🎯 用户兴趣画像分析（专业版）")

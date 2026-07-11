@@ -1,5 +1,7 @@
 # xcrawler
 
+[中文](README.md) | [English](README.en.md)
+
 <p align="center">
   <img src="assets/note.png" alt="xcrawler report preview" width="800">
 </p>
@@ -21,6 +23,7 @@
 
 ```bash
 python3 -m pip install -e ".[all]"          # 安装全功能依赖
+xcrawler demo                               # 无需 API Key 的虚构数据示例
 xcrawler fetch --user MiracleHe             # 抓取 + 翻译 + 聚类
 xcrawler analyze interest --user MiracleHe  # 专业兴趣画像
 xcrawler report --user MiracleHe            # 生成图表 + HTML 报告
@@ -168,7 +171,7 @@ xcrawler fetch-more
 # 确保新数据被翻译（关键步骤）
 xcrawler translate
 
-# 或使用便捷脚本（已包含同步逻辑），详见 [便捷脚本](#便捷脚本)
+# 或使用兼容便捷脚本，之后仍需执行 xcrawler translate
 ./refetch_data.sh --incremental    # 增量抓取（推荐）
 ./refetch_data.sh                  # 全量重新抓取
 ```
@@ -368,7 +371,7 @@ xcrawler export csv -u MiracleHe --output ./my_data
 - ✅ **数据回退**：entities 字段为空时自动从文本中提取
 
 ### 8. 统一 CLI 与批量翻译
-- ✅ **统一 CLI**：所有脚本支持 `--user`、`--pages`、`--model` 等命令行参数
+- ✅ **统一 CLI**：通过 `xcrawler fetch/translate/analyze/report/export/demo` 提供一致的参数与退出码
 - ✅ **参数覆盖**：CLI 参数优先于 `.env` 配置
 - ✅ **参数校验**：非法页数、批大小、温度和 Top N 会在启动时直接报错
 - ✅ **执行计划**：抓取、翻译和分析任务会在运行前显示预估页数、批次和 LLM 调用范围
@@ -420,7 +423,6 @@ xcrawler/
 ├── export_csv.py                 # CSV 导出
 ├── refetch_data.sh               # 智能抓取便捷脚本
 ├── pyproject.toml                # 包配置与依赖管理
-├── requirements.txt              # 依赖列表（兼容旧流程）
 ├── .env.example                  # 环境变量模板
 ├── .env                          # 环境变量（自行创建，不提交）
 ├── cache/                        # 缓存目录（不提交）
@@ -840,7 +842,7 @@ TIMEZONE_OFFSET = 8            # 时区偏移（UTC+N），默认8（中国）
 python3 -m pip install -e .
 ```
 
-基础包包含：数据抓取、翻译、分析、CLI 等核心功能。
+基础包包含数据抓取、翻译、导出、统一 CLI 和无密钥 Demo。未安装 `.[ml]` 时，`xcrawler fetch` 会在保存抓取与翻译数据后安全跳过聚类。
 
 ### 全功能安装
 
@@ -974,7 +976,7 @@ python3 -m pytest
 python3 -m pytest tests/test_all.py::TestCleanText -v
 ```
 
-项目包含 153 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测和 SQLite 事务兼容性等模块。
+项目测试覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测和 SQLite 事务兼容性等模块。
 
 ## 🧱 模块化结构
 
@@ -999,6 +1001,13 @@ JSON 和 SQLite 不会自动互相迁移：切换后只记录新的运行元数�
 LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析通过观测包装层记录成功与失败；翻译批处理保留专用路径，但每次批量、单条回退和重试也会写入调用记录。设置 `LLM_PRICING_JSON` 后可按模型估算成本；不设置时成本字段为 `null`，避免使用过期价格误导用户。
 
 ## 🔄 更新日志
+
+### v0.4.0 - 可靠性、安全数据语义与无密钥 Demo 🆕
+- ✅ **抓取可靠性**：增量抓取区分“无新数据”和网络失败，增加 429/5xx/超时重试
+- ✅ **数据安全**：全量抓取默认合并，`--replace` 显式覆盖，强制重翻改为全有或全无
+- ✅ **参数与配置校验**：统一验证 X 用户名、日期、时区、存储后端和派生路径
+- ✅ **可选依赖**：绘图命令给出明确安装指引，基础安装可安全跳过 ML 聚类
+- ✅ **开源体验**：新增 `xcrawler demo`、英文 README、构建产物 CI、Dependabot 和 PR 模板
 
 ### v0.3.0 - 工程化封装与开源产品化 🆕
 - ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装

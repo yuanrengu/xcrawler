@@ -83,5 +83,13 @@ def record_analysis_run(store: Storage, run: AnalysisRun) -> None:
     store.append_json_record(ANALYSIS_RUNS_KEY, run.to_dict())
 
 
+def record_failed_analysis_run(store: Storage, run: AnalysisRun, error: BaseException | str) -> None:
+    """尽最大努力记录失败，不覆盖原始业务异常。"""
+    try:
+        record_analysis_run(store, fail_analysis_run(run, error))
+    except Exception:
+        return
+
+
 def load_analysis_runs(store: Storage) -> list[dict[str, Any]]:
     return store.load_json(ANALYSIS_RUNS_KEY, default=[])

@@ -13,6 +13,7 @@ from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.profile import deepseek_profile_summary
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.utils import cli_validation
 
 _ = load_dotenv()
 _config = load_config()
@@ -23,7 +24,7 @@ TARGET_USERNAME = _config.target_username
 
 def parse_args():
     parser = argparse.ArgumentParser(description="快速兴趣画像分析（仅分析现有数据）")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     return parser.parse_args()
 

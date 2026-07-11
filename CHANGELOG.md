@@ -7,23 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-11
+
 ### Added
 - Per-attempt LLM telemetry in `llm_calls.json`, including provider, model, timing, token usage, status, sanitized errors, and optional estimated cost
 - Configurable `LLM_PRICING_JSON` table; provider prices are not hard-coded
 - Run-linked telemetry for interest, behavior, and sentiment analysis, plus translation retry/fallback telemetry
 - Optional `SQLiteStore` with structured `analysis_runs` and `llm_calls` tables, WAL mode, indexes, transactions, and generic Storage compatibility
 - `STORAGE_BACKEND`, `SQLITE_PATH`, `--storage`, and `--sqlite-path` selection while retaining JSON as the default
+- No-key `xcrawler demo` command with fictional local data and an evidence-linked HTML report
+- Strict X username, date, timezone, storage backend, and derived-path validation
+- Wheel/sdist build and clean-install smoke tests in CI, Dependabot configuration, and a pull request template
+- English project overview in `README.en.md`
 
 ### Changed
 - Telemetry persistence is best-effort and cannot interrupt the primary analysis workflow
 - Raw tweets, translations, caches, charts, and reports remain file-based when SQLite metadata storage is enabled
+- Full fetches merge with existing history by default; `--replace` explicitly rebuilds the snapshot
+- Forced retranslation is all-or-nothing and preserves the primary file when any item fails
+- The legacy `refetch_data.sh` entry point is now a thin wrapper around the unified CLI
+- Base installations save fetched and translated data, then skip ML clustering with an actionable message when `.[ml]` is unavailable
 
 ### Fixed
 - Visualization commands now fail with an actionable `viz` dependency message instead of crashing when `matplotlib` is unavailable
 - `xcrawler report --format png` now omits the HTML report, while the default and `--format html` retain the documented charts-plus-report behavior
 - Missing input data now produces a non-zero exit status for network analysis and report generation
+- Incremental fetch failures no longer appear as successful no-update runs; timeouts, 5xx responses, and rate limits use bounded retries
+- Network and sentiment analysis failures are recorded as failed analysis runs when storage remains available
 
-## [0.3.0] - 2025-07-06
+## [0.3.0] - 2026-07-06
 
 ### Added
 - Engineering foundation: `pyproject.toml`, `.env.example`, CI, LICENSE, and test configuration

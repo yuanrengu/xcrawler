@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from xcrawler.config import load_config
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
+from xcrawler.utils import cli_validation
 from xcrawler.utils.optional_dependencies import print_missing_optional_dependency
 from xcrawler.utils.time import parse_twitter_datetime
 
@@ -37,7 +38,7 @@ def _parse_dt(dt_str: str) -> datetime:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="数据可视化：生成分析图表")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
     parser.add_argument(

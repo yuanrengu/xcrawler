@@ -11,6 +11,7 @@ import os
 from xcrawler.config import load_config
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import load_json
+from xcrawler.utils import cli_validation
 
 _config = load_config()
 
@@ -42,7 +43,7 @@ def _csv_writer(file_obj):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="将分析数据导出为 CSV")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/csv）")
     parser.add_argument("--type", choices=["all", "tweets", "translations", "interests"],

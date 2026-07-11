@@ -21,6 +21,7 @@ from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
 
 _config = load_config()
@@ -305,7 +306,7 @@ def generate_behavior_summary(time_analysis, life_events, provider_override=None
 
 def parse_args():
     parser = argparse.ArgumentParser(description="用户行为分析：时间模式 + 生活事件检测")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--include-sensitive-events", action="store_true",
                         help="包含敏感生活事件详情和证据。默认隐藏敏感事件。")

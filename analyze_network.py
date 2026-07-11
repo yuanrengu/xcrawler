@@ -7,7 +7,12 @@ from collections import Counter
 from datetime import datetime
 
 from xcrawler.config import load_config
-from xcrawler.services.analysis_runs import complete_analysis_run, create_analysis_run, record_analysis_run
+from xcrawler.services.analysis_runs import (
+    complete_analysis_run,
+    create_analysis_run,
+    record_analysis_run,
+    record_failed_analysis_run,
+)
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
@@ -29,7 +34,7 @@ CACHE_DIR = _config.cache_dir
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Hashtag / Mention 网络分析")
-    parser.add_argument("-u", "--user", help="目标用户名")
+    parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--top", type=cli_validation.positive_int, default=20, help="显示 Top N 结果（默认 20）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
@@ -216,29 +221,29 @@ def main():
         input_range={"raw_tweets": len(raw_tweets)},
     )
 
-    print(f"📂 已加载 {len(raw_tweets)} 条推文\n")
+    try:
+        print(f"📂 已加载 {len(raw_tweets)} 条推文\n")
 
-    # 提取实体
-    print("🔍 提取 Hashtags 和 Mentions...")
-    hashtag_counts, mention_counts, pair_counts = extract_entities(raw_tweets)
+        print("🔍 提取 Hashtags 和 Mentions...")
+        hashtag_counts, mention_counts, pair_counts = extract_entities(raw_tweets)
 
-    # 如果 entities 为空，从文本提取 hashtag
-    if not hashtag_counts:
-        print("   ⚠️ entities 字段为空，从文本中提取 hashtag...")
-        hashtag_counts = extract_hashtags_from_text(raw_tweets)
+        if not hashtag_counts:
+            print("   ⚠️ entities 字段为空，从文本中提取 hashtag...")
+            hashtag_counts = extract_hashtags_from_text(raw_tweets)
 
-    # 打印统计
-    print()
-    print_stats(hashtag_counts, mention_counts, pair_counts, args.top)
+        print()
+        print_stats(hashtag_counts, mention_counts, pair_counts, args.top)
 
-    # 生成图表
-    print("\n🎨 生成图表...")
-    chart_hashtag_bar(hashtag_counts, output_dir, TARGET_USERNAME, args.top)
-    chart_mention_bar(mention_counts, output_dir, TARGET_USERNAME, args.top)
+        print("\n🎨 生成图表...")
+        chart_hashtag_bar(hashtag_counts, output_dir, TARGET_USERNAME, args.top)
+        chart_mention_bar(mention_counts, output_dir, TARGET_USERNAME, args.top)
 
-    # 保存结果
-    save_results(TARGET_USERNAME, hashtag_counts, mention_counts, pair_counts, CACHE_DIR)
-    record_analysis_run(store, complete_analysis_run(run))
+        save_results(TARGET_USERNAME, hashtag_counts, mention_counts, pair_counts, CACHE_DIR)
+        record_analysis_run(store, complete_analysis_run(run))
+    except Exception as error:
+        record_failed_analysis_run(store, run, error)
+        print(f"❌ 网络分析失败: {error}")
+        return 1
 
     print("\n" + "=" * 60)
     print("✅ 分析完成！")

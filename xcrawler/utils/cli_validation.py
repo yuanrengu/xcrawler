@@ -1,6 +1,23 @@
 from __future__ import annotations
 
 import argparse
+import re
+
+X_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,15}$")
+
+
+def validate_x_username(value: str) -> str:
+    username = value.strip().removeprefix("@")
+    if not X_USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("X 用户名必须为 1-15 位字母、数字或下划线")
+    return username
+
+
+def x_username(value: str) -> str:
+    try:
+        return validate_x_username(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 def positive_int(value: str) -> int:

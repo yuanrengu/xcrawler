@@ -19,6 +19,7 @@ from xcrawler.services.translation_cache import (
 )
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
 _config = load_config()
@@ -58,7 +59,7 @@ def _translation_cache_context() -> TranslationCacheContext:
 
 def main():
     args = argparse.ArgumentParser(description="翻译同步/重翻工具")
-    args.add_argument("-u", "--user", help="目标用户名")
+    args.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     args.add_argument("--cache-dir", help="缓存目录")
     args.add_argument("--force", action="store_true", help="强制重新翻译")
     args.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
@@ -211,6 +212,13 @@ def main():
                 detected_language=item["lang"],
                 created_at=item["created_at"],
             ))
+
+    if args.force and len(new_translations) != len(to_process):
+        failed_count = len(to_process) - len(new_translations)
+        save_json(translation_cache_path(cache_dir), normalize_translation_cache(translation_cache))
+        print(f"\n❌ 强制重翻失败 {failed_count} 条，未覆盖原翻译文件。")
+        print(f"   旧数据仍保留在: {translated_file_path}")
+        return 1
 
     if new_translations:
         current_data = translated_data + new_translations

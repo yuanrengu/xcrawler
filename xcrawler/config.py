@@ -9,9 +9,16 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from xcrawler.utils.cli_validation import validate_x_username
+
 load_dotenv()
 
 DEFAULT_TIMEZONE_OFFSET = 8.0
+STORAGE_BACKENDS = ("json", "sqlite")
+
+
+class ConfigError(ValueError):
+    """配置值无效且无法安全推断用户意图。"""
 
 
 @dataclass
@@ -64,11 +71,30 @@ def load_config() -> AppConfig:
     target_date_raw = os.getenv("TARGET_DATE", "2024-01-01")
     try:
         target_date = datetime.strptime(target_date_raw, "%Y-%m-%d")
-    except ValueError:
-        target_date = datetime(2024, 1, 1)
+    except ValueError as error:
+        raise ConfigError(f"TARGET_DATE 必须为 YYYY-MM-DD，当前值: {target_date_raw!r}") from error
+
+    timezone_raw = os.getenv("TIMEZONE_OFFSET", str(int(DEFAULT_TIMEZONE_OFFSET)))
+    try:
+        timezone_offset = float(timezone_raw)
+    except ValueError as error:
+        raise ConfigError(f"TIMEZONE_OFFSET 必须是数字，当前值: {timezone_raw!r}") from error
+    if not math.isfinite(timezone_offset) or not -24 <= timezone_offset <= 24:
+        raise ConfigError("TIMEZONE_OFFSET 必须是 -24 到 24 之间的有限数字")
+
+    username_raw = os.getenv("TARGET_USERNAME", "MiracleHe")
+    try:
+        target_username = validate_x_username(username_raw)
+    except ValueError as error:
+        raise ConfigError(f"TARGET_USERNAME 无效: {error}") from error
+
+    storage_backend = os.getenv("STORAGE_BACKEND", "json").strip().lower()
+    if storage_backend not in STORAGE_BACKENDS:
+        raise ConfigError(f"STORAGE_BACKEND 必须是: {', '.join(STORAGE_BACKENDS)}")
 
     return AppConfig(
-        target_username=os.getenv("TARGET_USERNAME", "MiracleHe"),
+        target_username=target_username,
+        cache_dir=os.getenv("CACHE_DIR", "cache"),
         x_bearer_token=os.getenv("X_BEARER_TOKEN"),
         deepseek_api_key=os.getenv("DEEPSEEK_API_KEY"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -76,9 +102,9 @@ def load_config() -> AppConfig:
         openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com"),
         llm_model=os.getenv("LLM_MODEL", "deepseek-chat"),
         target_date=target_date,
-        timezone_offset=float(os.getenv("TIMEZONE_OFFSET", str(int(DEFAULT_TIMEZONE_OFFSET)))),
+        timezone_offset=timezone_offset,
         llm_pricing=parse_llm_pricing(os.getenv("LLM_PRICING_JSON")),
-        storage_backend=os.getenv("STORAGE_BACKEND", "json").strip().lower(),
+        storage_backend=storage_backend,
         sqlite_path=os.getenv("SQLITE_PATH") or None,
     )
 
