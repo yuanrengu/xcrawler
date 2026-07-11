@@ -20,7 +20,8 @@ from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
-from xcrawler.storage.json_store import JsonStore, load_json, save_json
+from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
+from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
 
 # =========================
@@ -271,6 +272,9 @@ def parse_args():
     parser.add_argument("--temperature", type=cli_validation.temperature, default=0.2, help="模型温度（默认 0.2，范围 0-2）")
     parser.add_argument("--limit", type=cli_validation.positive_int, default=300, help="最多分析的翻译文本数（默认 300）")
     parser.add_argument("--cache-dir", help="缓存目录")
+    parser.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
+                        default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
+    parser.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
     return parser.parse_args()
 
 def main():
@@ -289,7 +293,7 @@ def main():
     print(f"📌 目标用户: {TARGET_USERNAME}")
     print()
     run = None
-    store = JsonStore(cache_dir)
+    store = create_store(cache_dir, backend=args.storage_backend, sqlite_path=args.sqlite_path)
     
     try:
         # 1. 加载数据

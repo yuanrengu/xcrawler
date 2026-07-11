@@ -17,7 +17,8 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
-from xcrawler.storage.json_store import JsonStore, load_json, save_json
+from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
+from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils.text import clean_text, detect_language
 
 _config = load_config()
@@ -60,13 +61,16 @@ def main():
     args.add_argument("-u", "--user", help="目标用户名")
     args.add_argument("--cache-dir", help="缓存目录")
     args.add_argument("--force", action="store_true", help="强制重新翻译")
+    args.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
+                      default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
+    args.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
     args = args.parse_args()
 
     username = args.user or TARGET_USERNAME
     cache_dir = args.cache_dir or CACHE_DIR
     ensure_dir(cache_dir)
     call_recorder = LLMCallRecorder(
-        JsonStore(cache_dir),
+        create_store(cache_dir, backend=args.storage_backend, sqlite_path=args.sqlite_path),
         pricing=_config.llm_pricing,
         username=username,
     )

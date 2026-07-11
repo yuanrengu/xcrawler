@@ -19,7 +19,7 @@ python -m pip install -e ".[test]"
 cp .env.example .env
 ```
 
-`.env`、`cache/`、`cache_backup/` 中可能包含密钥或个人分析数据，请不要提交。
+`.env`、`cache/`、`cache_backup/`、SQLite `*.db`/`*.db-wal`/`*.db-shm` 中可能包含密钥或个人分析数据，请不要提交。
 
 ## 常用命令
 

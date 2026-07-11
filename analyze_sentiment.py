@@ -20,7 +20,8 @@ from xcrawler.services.analysis_runs import (
 )
 from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
 from xcrawler.services.records import normalize_translated_tweets
-from xcrawler.storage.json_store import JsonStore, load_json, save_json
+from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
+from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
 
 try:
@@ -69,6 +70,9 @@ def parse_args():
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
     parser.add_argument("--top", type=cli_validation.positive_int, default=10, help="显示 Top N 正/负面推文")
+    parser.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
+                        default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
+    parser.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
     return parser.parse_args()
 
 
@@ -214,7 +218,7 @@ def main():
     # 初始化 LLM
     provider = create_provider()
     model = _config.llm_model
-    store = JsonStore(CACHE_DIR)
+    store = create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path)
     run = create_analysis_run(
         username=TARGET_USERNAME,
         analysis_type="sentiment",

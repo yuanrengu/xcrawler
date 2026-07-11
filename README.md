@@ -105,6 +105,11 @@ LLM_MODEL=deepseek-chat
 # 项目不内置可能过期的供应商价格，请以供应商当前价格为准
 # LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
 
+# 运行元数据存储：json（默认）或 sqlite
+STORAGE_BACKEND=json
+# SQLite 启用时的可选路径，默认 cache/xcrawler.db
+# SQLITE_PATH=cache/xcrawler.db
+
 # OpenAI 备选（用于 analyze_pro 的专业兴趣画像）
 # 如果不设置，则默认使用 DeepSeek
 OPENAI_API_KEY=your_openai_api_key
@@ -391,7 +396,10 @@ xcrawler/
 │   │   └── translation.py        # 单条/批量翻译
 │   ├── storage/
 │   │   ├── base.py               # Storage 接口
-│   │   └── json_store.py         # JSON 读写与目录创建
+│   │   ├── factory.py            # Storage 后端选择
+│   │   ├── json_store.py         # JSON 读写与目录创建
+│   │   ├── keys.py               # JSON/SQLite 共用 Storage key
+│   │   └── sqlite_store.py       # SQLite 结构化运行元数据
 │   └── utils/
 │       ├── cli_validation.py     # CLI 数值参数校验
 │       ├── text.py               # 文本清洗与语言检测
@@ -422,6 +430,7 @@ xcrawler/
 │   ├── {username}_sentiment.json
 │   ├── analysis_runs.json
 │   ├── llm_calls.json
+│   ├── xcrawler.db                # 启用 SQLite 时替代上述两个元数据 JSON
 │   └── translation_cache.json
 ├── cache_backup/                 # 全量抓取备份目录
 ├── tests/
@@ -961,7 +970,7 @@ python3 -m pytest
 python3 -m pytest tests/test_all.py::TestCleanText -v
 ```
 
-项目包含 144 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测等模块。
+项目包含 153 个单元测试，覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测和 SQLite 事务兼容性等模块。
 
 ## 🧱 模块化结构
 
@@ -971,7 +980,17 @@ python3 -m pytest tests/test_all.py::TestCleanText -v
 
 ### 存储与 Provider
 
-当前默认存储仍然是 JSON 文件，适合个人、小规模、低频分析；`JsonStore` 在此基础上提供统一接口。`analysis_runs.json` 记录任务级元数据，包括用户、分析类型、模型、参数、输入范围、运行状态、耗时、LLM 调用次数、token 用量和失败批次；`llm_calls.json` 记录每次 LLM 尝试的 provider、model、操作类型、时间、耗时、token、状态、错误和可选成本，并通过 `analysis_run_id` 关联兴趣、行为和情感分析。调用记录不会保存 Prompt 或响应正文。后续如果需要长期、多用户、多次增量分析，可在稳定的数据结构上增加 SQLite Store。
+默认 `JsonStore` 行为保持不变，适合个人、小规模、低频分析：`analysis_runs.json` 保存任务级元数据，`llm_calls.json` 保存调用级元数据。需要长期、多用户或频繁运行时，可设置 `STORAGE_BACKEND=sqlite`，或在支持的命令后增加 `--storage sqlite`。`SQLiteStore` 使用结构化 `analysis_runs`、`llm_calls` 表和必要索引，并为其他 `Storage` key 提供 `json_documents` 兼容表；启用 WAL、事务和 busy timeout。原始推文、翻译、缓存、图表和报告仍是普通文件。
+
+```bash
+# 临时启用 SQLite；默认数据库为 cache/xcrawler.db
+xcrawler analyze interest --user alice --storage sqlite
+
+# 自定义数据库位置
+xcrawler analyze sentiment --storage sqlite --sqlite-path state/xcrawler.db
+```
+
+JSON 和 SQLite 不会自动互相迁移：切换后只记录新的运行元数据，避免重复导入。可通过 `SQLiteStore.query_analysis_runs()` 和 `query_llm_calls()` 按用户、分析类型、provider、model、状态或 run ID 查询。数据库只记录元数据，不保存 Prompt 或响应正文。
 
 LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入口。兴趣、行为和情感分析通过观测包装层记录成功与失败；翻译批处理保留专用路径，但每次批量、单条回退和重试也会写入调用记录。设置 `LLM_PRICING_JSON` 后可按模型估算成本；不设置时成本字段为 `null`，避免使用过期价格误导用户。
 

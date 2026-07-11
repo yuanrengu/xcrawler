@@ -27,7 +27,8 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
-from xcrawler.storage.json_store import JsonStore, load_json, save_json
+from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
+from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
@@ -61,6 +62,9 @@ def parse_args():
     parser.add_argument("--analysis-limit", type=cli_validation.positive_int, default=ANALYSIS_LIMIT,
                         help=f"聚类和画像最多分析的翻译推文数（默认 {ANALYSIS_LIMIT}）")
     parser.add_argument("--no-translate", action="store_true", help="跳过翻译，仅抓取")
+    parser.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
+                        default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
+    parser.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
     return parser.parse_args()
 
 # ======================
@@ -241,7 +245,7 @@ def main():
         ANALYSIS_LIMIT = args.analysis_limit
     os.makedirs(CACHE_DIR, exist_ok=True)
     llm_call_recorder = LLMCallRecorder(
-        JsonStore(CACHE_DIR),
+        create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path),
         pricing=_config.llm_pricing,
         username=TARGET_USERNAME,
     )

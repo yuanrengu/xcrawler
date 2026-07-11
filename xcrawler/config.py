@@ -27,6 +27,8 @@ class AppConfig:
     target_date: datetime = datetime(2024, 1, 1)
     timezone_offset: float = DEFAULT_TIMEZONE_OFFSET
     llm_pricing: dict[str, dict[str, float]] | None = None
+    storage_backend: str = "json"
+    sqlite_path: str | None = None
 
 
 def parse_llm_pricing(value: str | None) -> dict[str, dict[str, float]]:
@@ -76,6 +78,8 @@ def load_config() -> AppConfig:
         target_date=target_date,
         timezone_offset=float(os.getenv("TIMEZONE_OFFSET", str(int(DEFAULT_TIMEZONE_OFFSET)))),
         llm_pricing=parse_llm_pricing(os.getenv("LLM_PRICING_JSON")),
+        storage_backend=os.getenv("STORAGE_BACKEND", "json").strip().lower(),
+        sqlite_path=os.getenv("SQLITE_PATH") or None,
     )
 
 
