@@ -6,6 +6,7 @@ import sys
 from collections.abc import Sequence
 
 from xcrawler import __version__
+from xcrawler.storage.factory import STORAGE_BACKENDS
 from xcrawler.utils import cli_validation
 
 
@@ -28,6 +29,17 @@ def _add_common_options(parser: argparse.ArgumentParser, *, model: bool = False)
     parser.add_argument("--verbose", action="store_true", help="保留参数，供后续详细日志使用")
 
 
+def _add_storage_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--storage",
+        "--storage-backend",
+        dest="storage_backend",
+        choices=STORAGE_BACKENDS,
+        help="运行元数据存储后端（默认读取 STORAGE_BACKEND，未配置时为 json）",
+    )
+    parser.add_argument("--sqlite-path", help="SQLite 数据库路径（默认 <cache-dir>/xcrawler.db）")
+
+
 def _forward_common(args: argparse.Namespace, *, include_model: bool = False) -> list[str]:
     forwarded: list[str] = []
     if args.user:
@@ -36,6 +48,15 @@ def _forward_common(args: argparse.Namespace, *, include_model: bool = False) ->
         forwarded.extend(["--cache-dir", args.cache_dir])
     if include_model and getattr(args, "model", None):
         forwarded.extend(["--model", args.model])
+    return forwarded
+
+
+def _forward_storage(args: argparse.Namespace) -> list[str]:
+    forwarded: list[str] = []
+    if getattr(args, "storage_backend", None):
+        forwarded.extend(["--storage", args.storage_backend])
+    if getattr(args, "sqlite_path", None):
+        forwarded.extend(["--sqlite-path", args.sqlite_path])
     return forwarded
 
 
@@ -50,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch = subparsers.add_parser("fetch", help="抓取数据、翻译并执行聚类分析")
     _add_common_options(fetch, model=True)
+    _add_storage_options(fetch)
     fetch.add_argument("--pages", type=cli_validation.positive_int, help="抓取页数")
     fetch.add_argument("--batch-size", type=cli_validation.positive_int, help="每批翻译条数")
     fetch.add_argument("--analysis-limit", type=cli_validation.positive_int, help="聚类和画像最多分析的翻译推文数")
@@ -65,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     translate = subparsers.add_parser("translate", help="同步或重翻已有原始推文")
     _add_common_options(translate)
+    _add_storage_options(translate)
     translate.add_argument("--force", action="store_true", help="强制重新翻译所有推文")
     translate.set_defaults(handler=_handle_translate)
 
@@ -73,23 +96,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     interest = analyze_subparsers.add_parser("interest", help="专业兴趣画像分析")
     _add_common_options(interest, model=True)
+    _add_storage_options(interest)
     interest.add_argument("--temperature", type=cli_validation.temperature, help="模型温度")
     interest.add_argument("--limit", type=cli_validation.positive_int, help="最多分析的翻译文本数")
     interest.set_defaults(handler=_handle_analyze_interest)
 
     behavior = analyze_subparsers.add_parser("behavior", help="时间行为和生活事件分析")
     _add_common_options(behavior)
+    _add_storage_options(behavior)
     behavior.add_argument("--include-sensitive-events", action="store_true", help="包含敏感生活事件详情和证据")
     behavior.set_defaults(handler=_handle_analyze_behavior)
 
     sentiment = analyze_subparsers.add_parser("sentiment", help="情感分析")
     _add_common_options(sentiment)
+    _add_storage_options(sentiment)
     sentiment.add_argument("--output", help="输出目录")
     sentiment.add_argument("--top", type=cli_validation.positive_int, help="显示 Top N 正/负面推文")
     sentiment.set_defaults(handler=_handle_analyze_sentiment)
 
     network = analyze_subparsers.add_parser("network", help="Hashtag / Mention 网络分析")
     _add_common_options(network)
+    _add_storage_options(network)
     network.add_argument("--top", type=cli_validation.positive_int, help="显示 Top N 结果")
     network.add_argument("--output", help="输出目录")
     network.set_defaults(handler=_handle_analyze_network)
@@ -113,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _handle_fetch(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args, include_model=True)
+    forwarded = _forward_common(args, include_model=True) + _forward_storage(args)
     if args.pages is not None:
         forwarded.extend(["--pages", str(args.pages)])
     if args.batch_size is not None:
@@ -137,14 +164,14 @@ def _handle_fetch_more(args: argparse.Namespace) -> int:
 
 
 def _handle_translate(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args)
+    forwarded = _forward_common(args) + _forward_storage(args)
     if args.force:
         forwarded.append("--force")
     return _run_script("translate_sync", forwarded)
 
 
 def _handle_analyze_interest(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args, include_model=True)
+    forwarded = _forward_common(args, include_model=True) + _forward_storage(args)
     if args.temperature is not None:
         forwarded.extend(["--temperature", str(args.temperature)])
     if args.limit is not None:
@@ -153,14 +180,14 @@ def _handle_analyze_interest(args: argparse.Namespace) -> int:
 
 
 def _handle_analyze_behavior(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args)
+    forwarded = _forward_common(args) + _forward_storage(args)
     if args.include_sensitive_events:
         forwarded.append("--include-sensitive-events")
     return _run_script("analyze_behavior", forwarded)
 
 
 def _handle_analyze_sentiment(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args)
+    forwarded = _forward_common(args) + _forward_storage(args)
     if args.output:
         forwarded.extend(["--output", args.output])
     if args.top is not None:
@@ -169,7 +196,7 @@ def _handle_analyze_sentiment(args: argparse.Namespace) -> int:
 
 
 def _handle_analyze_network(args: argparse.Namespace) -> int:
-    forwarded = _forward_common(args)
+    forwarded = _forward_common(args) + _forward_storage(args)
     if args.top is not None:
         forwarded.extend(["--top", str(args.top)])
     if args.output:

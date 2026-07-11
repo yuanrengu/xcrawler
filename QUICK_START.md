@@ -31,9 +31,15 @@ TARGET_USERNAME=MiracleHe
 
 # 可选：每百万 input/output token 的 USD 单价，用于本地成本估算
 # LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
+
+# 可选：长期、多用户运行时使用 SQLite 保存运行元数据
+STORAGE_BACKEND=json
+# SQLITE_PATH=cache/xcrawler.db
 ```
 
 每次翻译和 AI 分析的调用元数据会追加到 `cache/llm_calls.json`。该文件包含模型、Token、耗时、成功/失败和错误类型，但不会保存 Prompt 或模型响应正文。
+
+默认 JSON 工作流无需改动。若启用 `STORAGE_BACKEND=sqlite`，运行记录和 LLM 调用记录改存到 `cache/xcrawler.db`，原始推文、翻译、缓存、图表和报告仍保留原文件格式。也可单次运行 `xcrawler analyze interest --storage sqlite`；项目不会自动迁移旧 JSON 元数据。
 
 **快速获取:**
 - Twitter: https://developer.twitter.com/en/portal/dashboard

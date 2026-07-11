@@ -41,6 +41,35 @@ xcrawler analyze behavior -u another_user
 
 ---
 
+## 🗄️ 运行元数据存储
+
+默认使用 JSON，不需要额外配置：
+
+```bash
+STORAGE_BACKEND=json
+```
+
+长期、多用户或频繁运行时，可以仅将 `analysis_runs` 和 `llm_calls` 元数据切换到 SQLite：
+
+```bash
+STORAGE_BACKEND=sqlite
+SQLITE_PATH=cache/xcrawler.db
+```
+
+也可以仅对一次命令启用：
+
+```bash
+xcrawler analyze interest --storage sqlite
+xcrawler analyze behavior --storage sqlite --sqlite-path state/xcrawler.db
+```
+
+- SQLite 不接管原始推文、翻译、翻译缓存、图表或报告。
+- JSON 与 SQLite 不会自动迁移或合并；切换后只记录新运行。
+- 默认数据库路径是 `<cache-dir>/xcrawler.db`。
+- `*.db`、WAL 和 SHM 文件已加入 `.gitignore`，不要提交分析元数据。
+
+---
+
 ## 📂 文件命名规则
 
 所有数据文件都使用 `{username}_{类型}.json` 格式：
@@ -53,6 +82,7 @@ cache/
 ├── MiracleHe_interest_profile.json   # 兴趣画像
 ├── analysis_runs.json                # 分析任务级运行记录（多用户共享）
 ├── llm_calls.json                    # LLM 调用级记录（多用户共享，不含正文）
+├── xcrawler.db                       # SQLite 模式下替代上述两个元数据 JSON
 └── translation_cache.json            # 翻译缓存（通用）
 ```
 

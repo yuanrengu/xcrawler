@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-attempt LLM telemetry in `llm_calls.json`, including provider, model, timing, token usage, status, sanitized errors, and optional estimated cost
 - Configurable `LLM_PRICING_JSON` table; provider prices are not hard-coded
 - Run-linked telemetry for interest, behavior, and sentiment analysis, plus translation retry/fallback telemetry
+- Optional `SQLiteStore` with structured `analysis_runs` and `llm_calls` tables, WAL mode, indexes, transactions, and generic Storage compatibility
+- `STORAGE_BACKEND`, `SQLITE_PATH`, `--storage`, and `--sqlite-path` selection while retaining JSON as the default
 
 ### Changed
 - Telemetry persistence is best-effort and cannot interrupt the primary analysis workflow
+- Raw tweets, translations, caches, charts, and reports remain file-based when SQLite metadata storage is enabled
 
 ## [0.3.0] - 2025-07-06
 

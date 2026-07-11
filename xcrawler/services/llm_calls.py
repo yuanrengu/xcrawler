@@ -10,8 +10,7 @@ from uuid import uuid4
 
 from xcrawler.models import LLMCallRecord
 from xcrawler.storage.base import Storage
-
-LLM_CALLS_KEY = "llm_calls.json"
+from xcrawler.storage.keys import LLM_CALLS_KEY
 
 
 def _utc_now_iso() -> str:

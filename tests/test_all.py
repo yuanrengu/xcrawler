@@ -980,6 +980,142 @@ class TestJsonStore:
         assert store.load_json("runs.json") == [{"id": "1"}, {"id": "2"}]
 
 
+class TestSQLiteStore:
+    """测试可选 SQLite 元数据存储。"""
+
+    def test_factory_keeps_json_default_and_builds_sqlite(self, tmp_path):
+        from xcrawler.storage.factory import create_store
+        from xcrawler.storage.json_store import JsonStore
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        json_store = create_store(str(tmp_path))
+        sqlite_store = create_store(str(tmp_path), backend="SQLITE")
+
+        assert isinstance(json_store, JsonStore)
+        assert isinstance(sqlite_store, SQLiteStore)
+        assert sqlite_store.path == str(tmp_path / "xcrawler.db")
+        assert (tmp_path / "xcrawler.db").exists()
+
+    def test_generic_json_contract_is_compatible(self, tmp_path):
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        store = SQLiteStore(str(tmp_path / "metadata.db"))
+        assert store.load_json("missing.json", default={"missing": True}) == {"missing": True}
+
+        store.save_json("settings.json", {"language": "zh"})
+        assert store.load_json("settings.json") == {"language": "zh"}
+
+        store.append_json_record("events.json", {"id": "1"})
+        store.append_json_record("events.json", {"id": "2"})
+        assert store.load_json("events.json") == [{"id": "1"}, {"id": "2"}]
+
+    def test_analysis_runs_are_structured_and_queryable(self, tmp_path):
+        from xcrawler.services.analysis_runs import create_analysis_run, load_analysis_runs, record_analysis_run
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        store = SQLiteStore(str(tmp_path / "metadata.db"))
+        first = create_analysis_run(username="alice", analysis_type="interest", model="model-a")
+        second = create_analysis_run(username="bob", analysis_type="sentiment", model="model-b")
+        record_analysis_run(store, first)
+        record_analysis_run(store, second)
+
+        assert [record["id"] for record in load_analysis_runs(store)] == [first.id, second.id]
+        assert store.query_analysis_runs(username="alice")[0]["id"] == first.id
+        assert store.query_analysis_runs(analysis_type="sentiment", limit=1)[0]["id"] == second.id
+        with pytest.raises(ValueError, match="limit"):
+            store.query_analysis_runs(limit=0)
+
+    def test_llm_call_can_precede_run_and_remains_queryable(self, tmp_path):
+        from xcrawler.llm.provider import LLMResponse
+        from xcrawler.services.analysis_runs import create_analysis_run, record_analysis_run
+        from xcrawler.services.llm_calls import LLMCallRecorder, summarize_llm_calls
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        store = SQLiteStore(str(tmp_path / "metadata.db"))
+        run = create_analysis_run(username="alice", analysis_type="interest", model="model-a")
+        recorder = LLMCallRecorder(store, analysis_run_id=run.id, username="alice")
+        recorder.record_success(
+            operation="interest_analysis",
+            provider="test",
+            model="model-a",
+            started=recorder.start(),
+            response=LLMResponse(
+                content="private response",
+                model="model-a",
+                provider="test",
+                prompt_tokens=7,
+                completion_tokens=3,
+                total_tokens=10,
+            ),
+        )
+        record_analysis_run(store, run)
+
+        calls = store.query_llm_calls(analysis_run_id=run.id, status="success")
+        assert len(calls) == 1
+        assert calls[0]["total_tokens"] == 10
+        assert summarize_llm_calls(calls)["total_tokens"] == 10
+        assert store.query_analysis_runs(username="alice")[0]["id"] == run.id
+
+    def test_replace_records_rolls_back_on_invalid_input(self, tmp_path):
+        from xcrawler.storage.sqlite_store import ANALYSIS_RUNS_KEY, SQLiteStore, SQLiteStoreError
+
+        store = SQLiteStore(str(tmp_path / "metadata.db"))
+        original = [{"id": "run-1", "username": "alice"}]
+        store.save_json(ANALYSIS_RUNS_KEY, original)
+
+        with pytest.raises(SQLiteStoreError):
+            store.save_json(ANALYSIS_RUNS_KEY, [{"id": "run-2"}, {"username": "missing-id"}])
+
+        assert store.load_json(ANALYSIS_RUNS_KEY) == original
+
+    def test_file_database_enables_wal_and_expected_indexes(self, tmp_path):
+        import sqlite3
+
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        path = tmp_path / "nested" / "metadata.db"
+        SQLiteStore(str(path))
+
+        with sqlite3.connect(path) as connection:
+            journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            indexes = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%'"
+                )
+            }
+
+        assert journal_mode == "wal"
+        assert "idx_analysis_runs_username_started" in indexes
+        assert "idx_llm_calls_run_started" in indexes
+
+    def test_unknown_schema_version_is_not_silently_overwritten(self, tmp_path):
+        import sqlite3
+
+        from xcrawler.storage.sqlite_store import SQLiteStore, SQLiteStoreError
+
+        path = tmp_path / "future.db"
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "CREATE TABLE store_metadata (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL)"
+            )
+            connection.execute("INSERT INTO store_metadata VALUES ('schema_version', '99')")
+
+        with pytest.raises(SQLiteStoreError, match="schema version"):
+            SQLiteStore(str(path))
+
+        with sqlite3.connect(path) as connection:
+            version = connection.execute(
+                "SELECT metadata_value FROM store_metadata WHERE metadata_key = 'schema_version'"
+            ).fetchone()[0]
+            created_tables = {
+                row[0]
+                for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+        assert version == "99"
+        assert created_tables == {"store_metadata"}
+
+
 class TestModels:
     """测试 xcrawler.models"""
 
@@ -1316,6 +1452,18 @@ class TestCli:
 
         mock_run.assert_called_once_with("main", ["--analysis-limit", "50"])
 
+    def test_fetch_forwards_sqlite_options(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["fetch", "--storage", "sqlite", "--sqlite-path", "state/xcrawler.db"])
+
+        mock_run.assert_called_once_with(
+            "main",
+            ["--storage", "sqlite", "--sqlite-path", "state/xcrawler.db"],
+        )
+
     def test_fetch_rejects_zero_pages(self):
         from xcrawler import cli
 
@@ -1405,6 +1553,17 @@ class TestConfigValidation:
         from xcrawler.config import require_secret
 
         assert require_secret("X_BEARER_TOKEN", "  token  ") == "token"
+
+    def test_load_config_reads_storage_settings(self, monkeypatch):
+        from xcrawler.config import load_config
+
+        monkeypatch.setenv("STORAGE_BACKEND", "SQLITE")
+        monkeypatch.setenv("SQLITE_PATH", "state/xcrawler.db")
+
+        config = load_config()
+
+        assert config.storage_backend == "sqlite"
+        assert config.sqlite_path == "state/xcrawler.db"
 
 
 class TestAnalysisRuns:
