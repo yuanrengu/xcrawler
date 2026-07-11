@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Telemetry persistence is best-effort and cannot interrupt the primary analysis workflow
 - Raw tweets, translations, caches, charts, and reports remain file-based when SQLite metadata storage is enabled
 
+### Fixed
+- Visualization commands now fail with an actionable `viz` dependency message instead of crashing when `matplotlib` is unavailable
+- `xcrawler report --format png` now omits the HTML report, while the default and `--format html` retain the documented charts-plus-report behavior
+- Missing input data now produces a non-zero exit status for network analysis and report generation
+
 ## [0.3.0] - 2025-07-06
 
 ### Added

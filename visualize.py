@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from xcrawler.config import load_config
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
+from xcrawler.utils.optional_dependencies import print_missing_optional_dependency
 from xcrawler.utils.time import parse_twitter_datetime
 
 try:
@@ -39,7 +40,12 @@ def parse_args():
     parser.add_argument("-u", "--user", help="目标用户名")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
     parser.add_argument("--output", help="输出目录（默认 cache/charts）")
-    parser.add_argument("--format", choices=["png", "html"], default="png", help="输出格式")
+    parser.add_argument(
+        "--format",
+        choices=["png", "html"],
+        default="html",
+        help="输出格式：png 仅生成图表，html 生成图表和 HTML 报告（默认）",
+    )
     parser.add_argument("--include-sensitive-events", action="store_true",
                         help="在 HTML 报告中展示敏感事件证据。默认隐藏。")
     return parser.parse_args()
@@ -318,7 +324,11 @@ def main():
 
     if not data.get("raw"):
         print("❌ 找不到原始推文数据，请先运行 main.py")
-        return
+        return 1
+
+    if not MATPLOTLIB_AVAILABLE:
+        print_missing_optional_dependency("matplotlib", "viz", feature="可视化报告")
+        return 1
 
     print("🎨 生成图表...")
     chart_paths = []
@@ -337,19 +347,21 @@ def main():
         p = chart_interest_tags(data["profile"], output_dir, TARGET_USERNAME)
         chart_paths.append(("Interest Profile", p))
 
-    # 生成 HTML 报告
-    print()
-    report_path = generate_html_report(
-        TARGET_USERNAME,
-        chart_paths,
-        output_dir,
-        data,
-        include_sensitive_events=args.include_sensitive_events,
-    )
+    report_path = None
+    if args.format == "html":
+        print()
+        report_path = generate_html_report(
+            TARGET_USERNAME,
+            chart_paths,
+            output_dir,
+            data,
+            include_sensitive_events=args.include_sensitive_events,
+        )
 
     print("\n" + "=" * 60)
     print(f"✅ 可视化完成！共生成 {len(chart_paths)} 张图表")
-    print(f"📄 报告: {report_path}")
+    if report_path:
+        print(f"📄 报告: {report_path}")
     print("=" * 60 + "\n")
     return 0
 

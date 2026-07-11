@@ -11,6 +11,7 @@ from xcrawler.services.analysis_runs import complete_analysis_run, create_analys
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
+from xcrawler.utils.optional_dependencies import print_missing_optional_dependency
 
 try:
     import matplotlib
@@ -200,7 +201,11 @@ def main():
     if raw_tweets is None:
         print(f"❌ 找不到原始推文: {raw_file}")
         print("   请先运行 main.py 抓取数据")
-        return
+        return 1
+
+    if not MATPLOTLIB_AVAILABLE:
+        print_missing_optional_dependency("matplotlib", "viz", feature="网络分析图表")
+        return 1
 
     model = _config.llm_model
     store = create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path)
@@ -245,4 +250,4 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main() or 0)
+    raise SystemExit(main())

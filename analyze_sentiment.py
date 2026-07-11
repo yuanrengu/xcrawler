@@ -23,6 +23,7 @@ from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
+from xcrawler.utils.optional_dependencies import print_missing_optional_dependency
 
 try:
     import matplotlib
@@ -213,6 +214,10 @@ def main():
 
     if len(texts) < 5:
         print("⚠️ 数据量过少，无法有效分析")
+        return 1
+
+    if not MATPLOTLIB_AVAILABLE:
+        print_missing_optional_dependency("matplotlib", "viz", feature="情感分析图表")
         return 1
 
     # 初始化 LLM

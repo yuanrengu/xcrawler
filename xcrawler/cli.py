@@ -121,10 +121,14 @@ def build_parser() -> argparse.ArgumentParser:
     network.add_argument("--output", help="输出目录")
     network.set_defaults(handler=_handle_analyze_network)
 
-    report = subparsers.add_parser("report", help="生成图表和 HTML 报告")
+    report = subparsers.add_parser("report", help="生成 PNG 图表或 HTML 报告")
     _add_common_options(report)
     report.add_argument("--output", help="输出目录")
-    report.add_argument("--format", choices=["png", "html"], help="输出格式")
+    report.add_argument(
+        "--format",
+        choices=["png", "html"],
+        help="输出格式：png 仅生成图表，html 生成图表和 HTML 报告（默认）",
+    )
     report.add_argument("--include-sensitive-events", action="store_true", help="在 HTML 报告中展示敏感事件证据")
     report.set_defaults(handler=_handle_report)
 

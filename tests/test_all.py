@@ -533,6 +533,58 @@ class TestParseDt:
         assert dt == datetime(2024, 1, 1)
 
 
+class TestVisualizeMain:
+    """测试可视化主流程的依赖、退出码和输出格式。"""
+
+    @staticmethod
+    def _args(tmp_path, output_format="png"):
+        return SimpleNamespace(
+            user="alice",
+            cache_dir=str(tmp_path),
+            output=str(tmp_path / "charts"),
+            format=output_format,
+            include_sensitive_events=False,
+        )
+
+    def test_missing_raw_data_returns_failure(self, tmp_path, monkeypatch):
+        import visualize
+
+        monkeypatch.setattr(visualize, "parse_args", lambda: self._args(tmp_path))
+        monkeypatch.setattr(visualize, "load_data", lambda username, cache_dir: {"raw": None})
+
+        assert visualize.main() == 1
+
+    def test_missing_matplotlib_returns_failure(self, tmp_path, monkeypatch, capsys):
+        import visualize
+
+        monkeypatch.setattr(visualize, "parse_args", lambda: self._args(tmp_path))
+        monkeypatch.setattr(visualize, "load_data", lambda username, cache_dir: {"raw": [{"id": "1"}]})
+        monkeypatch.setattr(visualize, "MATPLOTLIB_AVAILABLE", False)
+
+        assert visualize.main() == 1
+        assert "python3 -m pip install -e '.[viz]'" in capsys.readouterr().out
+
+    @pytest.mark.parametrize("output_format, expected_html_calls", [("png", 0), ("html", 1)])
+    def test_format_controls_html_report(self, tmp_path, monkeypatch, output_format, expected_html_calls):
+        import visualize
+
+        monkeypatch.setattr(visualize, "parse_args", lambda: self._args(tmp_path, output_format))
+        monkeypatch.setattr(visualize, "load_data", lambda username, cache_dir: {
+            "raw": [{"id": "1"}],
+            "translated": [],
+            "behavior": {},
+            "profile": {},
+        })
+        monkeypatch.setattr(visualize, "MATPLOTLIB_AVAILABLE", True)
+        monkeypatch.setattr(visualize, "chart_hourly_heatmap", lambda *args: "hourly.png")
+        monkeypatch.setattr(visualize, "chart_weekday_bar", lambda *args: "weekday.png")
+        generate_html = MagicMock(return_value="report.html")
+        monkeypatch.setattr(visualize, "generate_html_report", generate_html)
+
+        assert visualize.main() == 0
+        assert generate_html.call_count == expected_html_calls
+
+
 # ==============================
 # analyze_network.py 函数测试
 # ==============================
@@ -607,6 +659,41 @@ class TestExtractHashtagsFromText:
         tweets = [{"text": "#Python #PYTHON #python"}]
         counts = extract_hashtags_from_text(tweets)
         assert counts["python"] == 3
+
+
+class TestAnalyzeNetworkMain:
+    """测试网络分析的失败退出语义。"""
+
+    @staticmethod
+    def _args(tmp_path):
+        return SimpleNamespace(
+            user="alice",
+            cache_dir=str(tmp_path),
+            output=str(tmp_path / "charts"),
+            top=20,
+            storage_backend="json",
+            sqlite_path=None,
+        )
+
+    def test_missing_raw_data_returns_failure(self, tmp_path, monkeypatch):
+        import analyze_network
+
+        monkeypatch.setattr(analyze_network, "parse_args", lambda: self._args(tmp_path))
+
+        assert analyze_network.main() == 1
+
+    def test_missing_matplotlib_returns_failure_before_run_creation(self, tmp_path, monkeypatch, capsys):
+        import analyze_network
+
+        (tmp_path / "alice_raw_tweets.json").write_text('[{"id": "1"}]', encoding="utf-8")
+        monkeypatch.setattr(analyze_network, "parse_args", lambda: self._args(tmp_path))
+        monkeypatch.setattr(analyze_network, "MATPLOTLIB_AVAILABLE", False)
+        create_run = MagicMock()
+        monkeypatch.setattr(analyze_network, "create_analysis_run", create_run)
+
+        assert analyze_network.main() == 1
+        create_run.assert_not_called()
+        assert "python3 -m pip install -e '.[viz]'" in capsys.readouterr().out
 
 
 # ==============================
@@ -1523,6 +1610,15 @@ class TestCli:
 
         mock_run.assert_called_once_with("translate_sync", ["--user", "alice", "--cache-dir", "tmp-cache", "--force"])
 
+    def test_report_forwards_explicit_format(self):
+        from xcrawler import cli
+
+        with patch("xcrawler.cli._run_script") as mock_run:
+            mock_run.return_value = 0
+            cli.main(["report", "--format", "png"])
+
+        mock_run.assert_called_once_with("visualize", ["--format", "png"])
+
     def test_pyproject_has_console_script(self):
         with open("pyproject.toml", encoding="utf-8") as f:
             content = f.read()
@@ -1625,6 +1721,36 @@ class TestAnalysisRuns:
 
 class TestSentimentFailures:
     """测试情感分析失败不会污染为 neutral"""
+
+    def test_missing_matplotlib_returns_failure_before_provider_creation(self, tmp_path, monkeypatch, capsys):
+        import analyze_sentiment
+
+        records = [
+            {
+                "tweet_id": str(index),
+                "original": f"original {index}",
+                "translated": f"translated {index}",
+                "detected_language": "en",
+                "created_at": "2024-01-01T00:00:00Z",
+            }
+            for index in range(5)
+        ]
+        (tmp_path / "alice_translated.json").write_text(json.dumps(records), encoding="utf-8")
+        monkeypatch.setattr(analyze_sentiment, "parse_args", lambda: SimpleNamespace(
+            user="alice",
+            cache_dir=str(tmp_path),
+            output=str(tmp_path / "charts"),
+            top=10,
+            storage_backend="json",
+            sqlite_path=None,
+        ))
+        monkeypatch.setattr(analyze_sentiment, "MATPLOTLIB_AVAILABLE", False)
+        create_provider = MagicMock()
+        monkeypatch.setattr(analyze_sentiment, "create_provider", create_provider)
+
+        assert analyze_sentiment.main() == 1
+        create_provider.assert_not_called()
+        assert "python3 -m pip install -e '.[viz]'" in capsys.readouterr().out
 
     def test_failed_batch_stays_unknown(self):
         from analyze_sentiment import batch_sentiment

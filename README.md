@@ -228,6 +228,9 @@ xcrawler analyze --help
 # 生成所有图表 + HTML 报告
 xcrawler report
 
+# 仅生成 PNG 图表，不生成 HTML 报告
+xcrawler report --format png
+
 # 指定用户
 xcrawler report -u MiracleHe
 
@@ -246,6 +249,7 @@ xcrawler report --include-sensitive-events
 - `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
 
 默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
+`--format html` 与默认行为一致，生成 PNG 图表和 HTML 汇总报告；`--format png` 仅生成 PNG 图表。图表命令需安装 `.[viz]` 或 `.[all]` 可选依赖。
 
 > **快速决策**：首次使用 → `xcrawler fetch --user <用户名>` 开始；日常更新 → `xcrawler fetch-more` 或 `./refetch_data.sh -i`；已有数据仅需分析 → `xcrawler analyze interest`。需要完整历史时，配合 `.env` 中的 `TARGET_DATE` 使用 `fetch-more --target-date`。
 
