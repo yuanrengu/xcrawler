@@ -1009,7 +1009,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - ✅ **可选依赖**：绘图命令给出明确安装指引，基础安装可安全跳过 ML 聚类
 - ✅ **开源体验**：新增 `xcrawler demo`、英文 README、构建产物 CI、Dependabot 和 PR 模板
 
-### v0.3.0 - 工程化封装与开源产品化 🆕
+### v0.3.0 - 工程化封装与开源产品化
 - ✅ **工程地基**：补齐 `pyproject.toml`、`.env.example`、CI、LICENSE 和测试配置，支持标准包安装
 - ✅ **模块化封装**：抽出 config、paths、storage、clients、services、utils 等公共模块，旧脚本保持兼容
 - ✅ **统一 CLI**：新增 `xcrawler fetch/translate/analyze/report/export` 入口，README 以统一 CLI 为主路径
