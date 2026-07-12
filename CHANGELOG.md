@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Full timeline fetching now retries transient failures and fails explicitly when any later page cannot be fetched, instead of returning a partial result as complete
+- `xcrawler fetch --replace` commits raw and translated snapshots together and preserves both previous files when translation is incomplete or either replacement fails
+- Translation commands now return a non-zero status when requested translations are partially or completely unsuccessful
+
 ## [0.4.0] - 2026-07-11
 
 ### Added

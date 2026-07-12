@@ -50,7 +50,8 @@ Base installation supports fetching, translation, export, and the no-key demo. I
 
 ## Data safety
 
-- Full fetches merge with existing history by default. Use `xcrawler fetch --replace` only when you intentionally want to rebuild the snapshot.
+- Full fetches merge with existing history by default. Use `xcrawler fetch --replace` only when you intentionally want to rebuild the snapshot. Replacement commits raw and translated files together only after every requested translation succeeds.
+- A partially completed fetch or translation returns a non-zero exit status; successfully saved partial translations are reported explicitly.
 - `xcrawler translate --force` replaces the primary translation file only when every requested retranslation succeeds.
 - JSON writes are atomic and retain a recovery backup. SQLite is available for structured run and LLM-call metadata.
 - Sensitive life-event evidence is hidden from HTML reports unless explicitly enabled.

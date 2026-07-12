@@ -8,6 +8,12 @@ import requests
 from xcrawler.config import require_secret
 
 RequestGet = Callable[..., requests.Response]
+MAX_FETCH_RETRIES = 3
+MAX_RATE_LIMIT_WAIT = 60
+
+
+class TweetFetchError(RuntimeError):
+    """用户时间线未能完整抓取，返回的部分数据不应当作完整结果。"""
 
 
 def auth_headers(bearer_token: str | None) -> dict[str, str]:
@@ -66,6 +72,7 @@ def fetch_user_tweets(
     headers: dict[str, str],
     max_pages: int,
     request_get: RequestGet = requests.get,
+    max_retries: int = MAX_FETCH_RETRIES,
 ) -> list[dict]:
     url = f"https://api.twitter.com/2/users/{user_id}/tweets"
     params = {
@@ -76,59 +83,72 @@ def fetch_user_tweets(
 
     tweets = []
     for page in range(max_pages):
-        try:
-            response = request_get(url, headers=headers, params=params, timeout=10)
+        data = None
+        response = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = request_get(url, headers=headers, params=params, timeout=10)
+                if response.status_code == 429:
+                    reset_time = response.headers.get("x-rate-limit-reset")
+                    if reset_time is None:
+                        wait_seconds = min(2 ** (attempt - 1), 8)
+                    else:
+                        try:
+                            wait_seconds = max(0, int(float(reset_time)) - int(time.time()))
+                        except (TypeError, ValueError) as error:
+                            raise TweetFetchError("API 限流重置时间无效") from error
+                    if wait_seconds > MAX_RATE_LIMIT_WAIT:
+                        raise TweetFetchError(f"API 限流需等待 {wait_seconds} 秒，超过最大等待时间")
+                    if attempt == max_retries:
+                        raise TweetFetchError(f"API 限流，重试 {max_retries} 次后仍未恢复")
+                    print(f"⏳ API 限流，{wait_seconds} 秒后重试 ({attempt}/{max_retries})...")
+                    time.sleep(wait_seconds)
+                    continue
 
-            if response.status_code == 429:
-                reset_time = response.headers.get("x-rate-limit-reset")
-                if reset_time:
-                    wait_seconds = int(reset_time) - int(time.time())
-                    if wait_seconds > 0:
-                        print(f"⏳ API 限流，需等待 {wait_seconds // 60} 分 {wait_seconds % 60} 秒...")
-                        print("💡 提示：X API 有严格的频率限制，请稍后再试")
-                        if page == 0:
-                            raise Exception(f"API 限流，请等待 {wait_seconds // 60} 分钟后再运行")
-                        break
-                else:
-                    print("⚠️ API 限流（429），建议等待 15 分钟后重试")
-                    if page == 0:
-                        raise Exception("API 限流，请等待 15 分钟后再运行")
-                    break
-
-            response.raise_for_status()
-            data = response.json()
-
-            page_tweets = data.get("data", [])
-            if not page_tweets:
-                print(f"📭 第 {page + 1} 页无数据，停止抓取")
+                response.raise_for_status()
+                data = response.json()
                 break
+            except requests.exceptions.HTTPError as error:
+                status = error.response.status_code if error.response is not None else 0
+                retryable = status >= 500 or status == 0
+                if status in (401, 403) or not retryable or attempt == max_retries:
+                    raise TweetFetchError(f"第 {page + 1} 页 HTTP 错误（{status or 'unknown'}）") from error
+                delay = min(2 ** (attempt - 1), 8)
+                print(f"⚠️ 第 {page + 1} 页 HTTP {status}，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                time.sleep(delay)
+            except requests.exceptions.RequestException as error:
+                if attempt == max_retries:
+                    raise TweetFetchError(f"第 {page + 1} 页网络错误，重试 {max_retries} 次后仍失败") from error
+                delay = min(2 ** (attempt - 1), 8)
+                print(f"⚠️ 第 {page + 1} 页网络错误，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                time.sleep(delay)
+            except ValueError as error:
+                if attempt == max_retries:
+                    raise TweetFetchError(f"第 {page + 1} 页响应解析失败") from error
+                delay = min(2 ** (attempt - 1), 8)
+                print(f"⚠️ 第 {page + 1} 页响应解析失败，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                time.sleep(delay)
 
-            tweets.extend(page_tweets)
-            print(f"📄 已抓取第 {page + 1} 页，本页 {len(page_tweets)} 条，累计 {len(tweets)} 条")
+        if response is None or data is None:
+            raise TweetFetchError(f"第 {page + 1} 页未能获取有效响应")
 
-            remaining = response.headers.get("x-rate-limit-remaining")
-            if remaining:
-                print(f"   剩余配额: {remaining} 次")
-
-            token = data.get("meta", {}).get("next_token")
-            if not token:
-                print("✅ 已抓取所有可用推文")
-                break
-            params["pagination_token"] = token
-            time.sleep(1)
-
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 429:
-                print("⚠️ API 限流，请稍后重试")
-            else:
-                print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
-            if page == 0:
-                raise Exception(f"首页抓取失败: {str(e)}")
+        page_tweets = data.get("data", [])
+        if not page_tweets:
+            print(f"📭 第 {page + 1} 页无数据，停止抓取")
             break
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ 第 {page + 1} 页抓取失败: {str(e)}")
-            if page == 0:
-                raise Exception(f"首页抓取失败: {str(e)}")
+
+        tweets.extend(page_tweets)
+        print(f"📄 已抓取第 {page + 1} 页，本页 {len(page_tweets)} 条，累计 {len(tweets)} 条")
+
+        remaining = response.headers.get("x-rate-limit-remaining")
+        if remaining:
+            print(f"   剩余配额: {remaining} 次")
+
+        token = data.get("meta", {}).get("next_token")
+        if not token:
+            print("✅ 已抓取所有可用推文")
             break
+        params["pagination_token"] = token
+        time.sleep(1)
 
     return tweets

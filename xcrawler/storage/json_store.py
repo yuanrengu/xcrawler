@@ -98,6 +98,69 @@ def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = Tr
             os.unlink(temp_path)
 
 
+def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -> None:
+    """先完整序列化所有文件，再统一替换；任一替换失败时回滚已替换文件。"""
+    pending: dict[str, str] = {}
+    rollback: dict[str, str | None] = {}
+    replaced: list[str] = []
+    try:
+        for path, data in updates.items():
+            parent = os.path.dirname(path) or "."
+            os.makedirs(parent, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=parent,
+                prefix=f".{os.path.basename(path)}.",
+                suffix=".pending",
+                delete=False,
+            ) as temp_file:
+                json.dump(data, temp_file, ensure_ascii=False, indent=indent)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+                pending[path] = temp_file.name
+
+        for path in updates:
+            if not os.path.exists(path):
+                rollback[path] = None
+                continue
+            parent = os.path.dirname(path) or "."
+            with tempfile.NamedTemporaryFile(
+                "wb",
+                dir=parent,
+                prefix=f".{os.path.basename(path)}.",
+                suffix=".rollback",
+                delete=False,
+            ) as backup_file:
+                rollback[path] = backup_file.name
+                with open(path, "rb") as source_file:
+                    shutil.copyfileobj(source_file, backup_file)
+                backup_file.flush()
+                os.fsync(backup_file.fileno())
+            _atomic_copy(path, f"{path}.bak")
+
+        for path, temp_path in pending.items():
+            os.replace(temp_path, path)
+            pending[path] = ""
+            replaced.append(path)
+    except Exception:
+        for path in reversed(replaced):
+            backup_path = rollback.get(path)
+            if backup_path:
+                os.replace(backup_path, path)
+                rollback[path] = None
+            elif os.path.exists(path):
+                os.unlink(path)
+        raise
+    finally:
+        for temp_path in pending.values():
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+        for backup_path in rollback.values():
+            if backup_path and os.path.exists(backup_path):
+                os.unlink(backup_path)
+
+
 class JsonStore(Storage):
     """JSON-file store rooted at a cache directory."""
 

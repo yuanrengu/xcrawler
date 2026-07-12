@@ -29,7 +29,7 @@ from xcrawler.services.translation_cache import (
 )
 from xcrawler.services.tweets import merge_translated_tweets, merge_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.storage.json_store import load_json, replace_json_files_atomically, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.optional_dependencies import modules_available
 from xcrawler.utils.text import clean_text, detect_language
@@ -317,12 +317,15 @@ def main():
         existing_raw = load_json(raw_file, default=[])
         if not isinstance(existing_raw, list):
             raise ValueError(f"原始推文文件必须是 JSON 数组: {raw_file}")
-        raw_tweets = raw_tweets if args.replace else merge_tweets(existing_raw, raw_tweets)
-        save_json(raw_file, raw_tweets)
-        print(f"💾 原始推文已保存至: {raw_file}\n")
+        if not args.replace:
+            raw_tweets = merge_tweets(existing_raw, raw_tweets)
+            save_json(raw_file, raw_tweets)
+            print(f"💾 原始推文已保存至: {raw_file}\n")
 
         # 3. 清洗 + 批量翻译
         if args.no_translate:
+            if args.replace:
+                save_json(raw_file, raw_tweets)
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
             print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
             return 0
@@ -420,11 +423,21 @@ def main():
         existing_translated = load_json(translated_file, default=[])
         if not isinstance(existing_translated, list):
             raise ValueError(f"翻译文件必须是 JSON 数组: {translated_file}")
-        if not args.replace:
+        if args.replace and failed_list:
+            print("❌ --replace 本次翻译未全部成功，原 raw/translated 快照均未覆盖。")
+            return 1
+        if args.replace:
+            replace_json_files_atomically({raw_file: raw_tweets, translated_file: translated_data})
+            print(f"💾 原始推文已保存至: {raw_file}")
+        else:
             translated_data = merge_translated_tweets(existing_translated, translated_data)
-        save_json(translated_file, translated_data)
+            save_json(translated_file, translated_data)
         print(f"💾 翻译结果已保存至: {translated_file}")
         print(f"✅ 成功翻译 {len(translated)} 条推文\n")
+
+        if failed_list:
+            print(f"❌ 翻译未完整：{len(failed_list)} 条失败，已保存成功结果并返回失败状态。")
+            return 1
 
         if len(translated) < 10:
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")

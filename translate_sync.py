@@ -253,6 +253,11 @@ def main():
             print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
 
     print("\n" + "=" * 60)
+    failed_count = len(to_process) - len(new_translations)
+    if failed_count:
+        print(f"❌ 翻译同步未完整：{failed_count} 条失败")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

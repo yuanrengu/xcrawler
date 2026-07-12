@@ -871,6 +871,79 @@ class TestGetUserProfile:
         assert result is None
 
 
+class TestFullFetchFailures:
+    """测试全量抓取不会把中途失败当作完整结果。"""
+
+    @patch("xcrawler.clients.x_api.time.sleep")
+    def test_later_page_failure_raises_instead_of_returning_partial_data(self, mock_sleep):
+        import requests
+
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        first = MagicMock(status_code=200, headers={})
+        first.raise_for_status = MagicMock()
+        first.json.return_value = {
+            "data": [{"id": "1", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "next"},
+        }
+        request_get = MagicMock(side_effect=[
+            first,
+            requests.exceptions.Timeout("page 2 timeout"),
+            requests.exceptions.Timeout("page 2 timeout"),
+        ])
+
+        with pytest.raises(TweetFetchError, match="第 2 页网络错误"):
+            fetch_user_tweets("user-id", {}, 2, request_get=request_get, max_retries=2)
+
+        assert request_get.call_count == 3
+        assert mock_sleep.call_args_list[-1].args == (1,)
+
+    def test_replace_translation_failure_preserves_previous_snapshot(self, tmp_path, monkeypatch):
+        import main
+
+        old_raw = [{"id": "old", "text": "old tweet", "created_at": "2025-01-01T00:00:00Z"}]
+        old_translated = [{
+            "tweet_id": "old",
+            "original": "old tweet",
+            "translated": "旧译文",
+            "detected_language": "en",
+            "created_at": "2025-01-01T00:00:00Z",
+        }]
+        raw_path = tmp_path / "alice_raw_tweets.json"
+        translated_path = tmp_path / "alice_translated.json"
+        raw_path.write_text(json.dumps(old_raw, ensure_ascii=False), encoding="utf-8")
+        translated_path.write_text(json.dumps(old_translated, ensure_ascii=False), encoding="utf-8")
+        new_raw = [
+            {"id": str(index), "text": f"long english tweet {index}", "created_at": "2026-01-01T00:00:00Z"}
+            for index in range(10)
+        ]
+        args = SimpleNamespace(
+            user="alice",
+            pages=1,
+            batch_size=10,
+            model=None,
+            cache_dir=str(tmp_path),
+            analysis_limit=100,
+            no_translate=False,
+            replace=True,
+            storage_backend="json",
+            sqlite_path=None,
+        )
+        monkeypatch.setattr(main, "TARGET_USERNAME", main.TARGET_USERNAME)
+        monkeypatch.setattr(main, "CACHE_DIR", main.CACHE_DIR)
+        monkeypatch.setattr(main, "parse_args", lambda: args)
+        monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+        monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+        monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: new_raw)
+        monkeypatch.setattr(main, "deepseek_translate_batch", lambda texts, langs: [None] * len(texts))
+        monkeypatch.setattr(main, "save_translation_cache", lambda cache: None)
+
+        assert main.main() == 1
+        assert json.loads(raw_path.read_text(encoding="utf-8")) == old_raw
+        assert json.loads(translated_path.read_text(encoding="utf-8")) == old_translated
+
+
 # ==============================
 # 集成级测试
 # ==============================
@@ -963,6 +1036,20 @@ class TestTranslateSyncImport:
         assert translate_sync.main() == 1
         assert json.loads(translated_file.read_text(encoding="utf-8")) == original
         assert translated_file.with_suffix(".json.bak").exists()
+
+    def test_non_force_all_fail_returns_failure(self, tmp_path, monkeypatch):
+        import sys
+
+        import translate_sync
+
+        raw = [{"id": "1", "text": "first long text", "created_at": "2024-01-02T00:00:00Z"}]
+        (tmp_path / "alice_raw_tweets.json").write_text(json.dumps(raw), encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["translate_sync.py", "--user", "alice", "--cache-dir", str(tmp_path)])
+        monkeypatch.setattr(translate_sync, "translate_batch", MagicMock(return_value=[None]))
+        monkeypatch.setattr(translate_sync, "detect_language", lambda text: "en")
+
+        assert translate_sync.main() == 1
+        assert not (tmp_path / "alice_translated.json").exists()
 
 
 class TestAnalysisImports:
@@ -1189,6 +1276,31 @@ class TestJsonStore:
             json_store.save_json(str(path), {"version": 2})
 
         assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
+
+    def test_atomic_json_bundle_rolls_back_when_second_replace_fails(self, tmp_path, monkeypatch):
+        from xcrawler.storage import json_store
+
+        raw_path = tmp_path / "raw.json"
+        translated_path = tmp_path / "translated.json"
+        raw_path.write_text('{"version":"old-raw"}', encoding="utf-8")
+        translated_path.write_text('{"version":"old-translated"}', encoding="utf-8")
+        real_replace = json_store.os.replace
+
+        def fail_second_pending_replace(source, destination):
+            if destination == str(translated_path) and str(source).endswith(".pending"):
+                raise OSError("disk full")
+            return real_replace(source, destination)
+
+        monkeypatch.setattr(json_store.os, "replace", fail_second_pending_replace)
+
+        with pytest.raises(OSError, match="disk full"):
+            json_store.replace_json_files_atomically({
+                str(raw_path): {"version": "new-raw"},
+                str(translated_path): {"version": "new-translated"},
+            })
+
+        assert json.loads(raw_path.read_text(encoding="utf-8")) == {"version": "old-raw"}
+        assert json.loads(translated_path.read_text(encoding="utf-8")) == {"version": "old-translated"}
         assert not list(tmp_path.glob(".data.json.*.tmp"))
 
     def test_load_json_recovers_corrupt_primary_from_backup(self, tmp_path):
