@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-12
+
 ### Fixed
 - Full timeline fetching now retries transient failures and fails explicitly when any later page cannot be fetched, instead of returning a partial result as complete
 - `xcrawler fetch --replace` commits raw and translated snapshots together and preserves both previous files when translation is incomplete or either replacement fails
@@ -19,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `fetch-more --pages` is now explicitly a shared HTTP request budget that includes retries
 - Full fetch behavior is documented as archive mode by default and snapshot mode with `--replace`
+- Full and incremental X API operations share one retry, rate-limit, and error-classification engine
+- `--replace --no-translate` filters retained translations to the new raw snapshot instead of leaving stale records
+- CI now enforces a coverage floor and performs scheduled base, visualization, and ML installation smoke tests
+- The PyPI distribution is named `xcrawler-ai` (the CLI and import package remain `xcrawler`) and uses Trusted Publishing
 
 ## [0.4.0] - 2026-07-11
 

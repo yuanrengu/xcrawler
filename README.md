@@ -22,7 +22,7 @@
 - 🧩 **模块化** — 统一 `xcrawler` CLI，支持可插拔存储和 LLM Provider
 
 ```bash
-python3 -m pip install -e ".[all]"          # 安装全功能依赖
+python3 -m pip install "xcrawler-ai[all]"   # 从 PyPI 安装全功能依赖
 xcrawler demo                               # 无需 API Key 的虚构数据示例
 xcrawler fetch --user MiracleHe             # 抓取 + 翻译 + 聚类
 xcrawler analyze interest --user MiracleHe  # 专业兴趣画像
@@ -64,15 +64,15 @@ xcrawler report --user MiracleHe            # 生成图表 + HTML 报告
 项目要求 Python 3.10 或更高版本。
 
 ```bash
-# 推荐：使用虚拟环境，安装全功能依赖
+# 推荐：使用虚拟环境，从 PyPI 安装全功能依赖
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -e ".[all]"
+python3 -m pip install "xcrawler-ai[all]"
 
-# 如果只需要基础 CLI / 抓取 / LLM 功能
-python3 -m pip install -e .
+# 如果只需要基础 CLI / 抓取 / LLM 功能（命令仍为 xcrawler）
+python3 -m pip install xcrawler-ai
 
-# 可选依赖：向量聚类/可视化
+# 从源码开发或按需安装向量聚类/可视化依赖
 python3 -m pip install -e ".[ml,viz]"
 ```
 
@@ -1006,7 +1006,13 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 🔄 更新日志
 
-### v0.4.0 - 可靠性、安全数据语义与无密钥 Demo 🆕
+### v0.4.1 - 抓取事务与增量状态机 🆕
+- ✅ **全量完整性**：任意分页失败都显式返回失败，禁止部分结果进入 snapshot
+- ✅ **增量状态机**：Forward/Backward 分阶段保存，记录请求、数据页、重试、stop reason 和 partial 状态
+- ✅ **数据契约**：raw schema 严格校验，译文携带原文与配置指纹
+- ✅ **统一请求引擎**：全量、增量、用户信息共用重试、限流和错误分类
+
+### v0.4.0 - 可靠性、安全数据语义与无密钥 Demo
 - ✅ **抓取可靠性**：增量抓取区分“无新数据”和网络失败，增加 429/5xx/超时重试
 - ✅ **数据安全**：全量抓取默认合并，`--replace` 显式覆盖，强制重翻改为全有或全无
 - ✅ **快照事务**：`--replace` 仅在抓取完整且翻译全部成功后同时提交 raw/translated，部分失败返回非零退出码

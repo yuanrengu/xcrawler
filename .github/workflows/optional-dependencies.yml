@@ -1,0 +1,37 @@
+name: Optional dependencies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        extra: [base, viz, ml]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install base
+        if: matrix.extra == 'base'
+        run: python -m pip install -e .
+      - name: Install optional extra
+        if: matrix.extra != 'base'
+        run: python -m pip install -e ".[${{ matrix.extra }}]"
+      - name: Smoke test base CLI
+        run: |
+          xcrawler --version
+          xcrawler demo --output /tmp/xcrawler-demo
+      - name: Smoke test viz imports
+        if: matrix.extra == 'viz'
+        run: python -c "import matplotlib; import visualize"
+      - name: Smoke test ML imports
+        if: matrix.extra == 'ml'
+        run: python -c "import sentence_transformers; import sklearn"

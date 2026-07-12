@@ -4,6 +4,7 @@ xcrawler 单元测试
 """
 import csv
 import json
+from contextlib import closing
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -545,7 +546,7 @@ class TestFetchMoreHistory:
 
         mock_get.side_effect = requests.exceptions.Timeout("timed out")
 
-        with pytest.raises(fetch_more_history.FetchError, match="重试 2 次后仍失败"):
+        with pytest.raises(fetch_more_history.FetchError, match="第 1 页网络错误") as exc_info:
             fetch_more_history.fetch_tweets_generic(
                 "user-id",
                 {},
@@ -555,6 +556,9 @@ class TestFetchMoreHistory:
 
         assert mock_get.call_count == 2
         mock_sleep.assert_called_once_with(1)
+        assert exc_info.value.requests_used == 2
+        assert exc_info.value.retries == 1
+        assert exc_info.value.stop_reason == "network_error"
 
     @patch("fetch_more_history.time.sleep")
     @patch("fetch_more_history.requests.get")
@@ -1031,6 +1035,42 @@ class TestFullFetchFailures:
 
         assert main.main() == 0
         assert json.loads(failed_path.read_text(encoding="utf-8")) == []
+
+    def test_replace_no_translate_filters_stale_translations(self, tmp_path, monkeypatch):
+        import main
+
+        old_raw = [
+            {"id": "old", "text": "old tweet", "created_at": "2025-01-01T00:00:00Z"},
+            {"id": "keep", "text": "kept tweet", "created_at": "2025-01-02T00:00:00Z"},
+        ]
+        old_translated = [
+            {"tweet_id": "old", "original": "old tweet", "translated": "old", "detected_language": "en", "created_at": "2025-01-01T00:00:00Z"},
+            {"tweet_id": "keep", "original": "kept tweet", "translated": "keep", "detected_language": "en", "created_at": "2025-01-02T00:00:00Z"},
+        ]
+        new_raw = [
+            {"id": "new", "text": "new tweet", "created_at": "2026-01-02T00:00:00Z"},
+            {"id": "keep", "text": "kept tweet", "created_at": "2025-01-02T00:00:00Z"},
+        ]
+        raw_path = tmp_path / "alice_raw_tweets.json"
+        translated_path = tmp_path / "alice_translated.json"
+        raw_path.write_text(json.dumps(old_raw), encoding="utf-8")
+        translated_path.write_text(json.dumps(old_translated), encoding="utf-8")
+        args = SimpleNamespace(
+            user="alice", pages=1, batch_size=10, model=None, cache_dir=str(tmp_path),
+            analysis_limit=100, no_translate=True, replace=True, storage_backend="json", sqlite_path=None,
+        )
+        monkeypatch.setattr(main, "TARGET_USERNAME", main.TARGET_USERNAME)
+        monkeypatch.setattr(main, "CACHE_DIR", main.CACHE_DIR)
+        monkeypatch.setattr(main, "parse_args", lambda: args)
+        monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+        monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+        monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: new_raw)
+
+        assert main.main() == 0
+        assert json.loads(raw_path.read_text(encoding="utf-8")) == new_raw
+        retained = json.loads(translated_path.read_text(encoding="utf-8"))
+        assert [item["tweet_id"] for item in retained] == ["keep"]
 
 
 # ==============================
@@ -1550,7 +1590,7 @@ class TestSQLiteStore:
         path = tmp_path / "nested" / "metadata.db"
         SQLiteStore(str(path))
 
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection:
             journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
             indexes = {
                 row[0]
@@ -1569,16 +1609,17 @@ class TestSQLiteStore:
         from xcrawler.storage.sqlite_store import SQLiteStore, SQLiteStoreError
 
         path = tmp_path / "future.db"
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection:
             connection.execute(
                 "CREATE TABLE store_metadata (metadata_key TEXT PRIMARY KEY, metadata_value TEXT NOT NULL)"
             )
             connection.execute("INSERT INTO store_metadata VALUES ('schema_version', '99')")
+            connection.commit()
 
         with pytest.raises(SQLiteStoreError, match="schema version"):
             SQLiteStore(str(path))
 
-        with sqlite3.connect(path) as connection:
+        with closing(sqlite3.connect(path)) as connection:
             version = connection.execute(
                 "SELECT metadata_value FROM store_metadata WHERE metadata_key = 'schema_version'"
             ).fetchone()[0]
