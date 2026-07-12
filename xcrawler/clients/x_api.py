@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import requests
 
+from xcrawler.clients.retry import RequestAttemptsError, request_json_with_retries
 from xcrawler.config import require_secret
 
 RequestGet = Callable[..., requests.Response]
@@ -23,9 +24,18 @@ def auth_headers(bearer_token: str | None) -> dict[str, str]:
 
 def get_user_id(username: str, headers: dict[str, str], request_get: RequestGet = requests.get) -> str:
     url = f"https://api.twitter.com/2/users/by/username/{username}"
-    response = request_get(url, headers=headers, timeout=10)
-    response.raise_for_status()
-    data = response.json()
+    try:
+        data = request_json_with_retries(
+            url,
+            headers=headers,
+            params={},
+            request_get=request_get,
+            max_retries=MAX_FETCH_RETRIES,
+            request_budget=MAX_FETCH_RETRIES,
+            page_number=1,
+        ).data
+    except RequestAttemptsError as error:
+        raise TweetFetchError(str(error)) from error
 
     if "data" not in data:
         raise ValueError(f"用户 '{username}' 不存在或无权访问")
@@ -43,9 +53,15 @@ def get_user_profile(
         "user.fields": "description,public_metrics,created_at,profile_image_url,verified,location"
     }
     try:
-        response = request_get(url, headers=headers, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        data = request_json_with_retries(
+            url,
+            headers=headers,
+            params=params,
+            request_get=request_get,
+            max_retries=MAX_FETCH_RETRIES,
+            request_budget=MAX_FETCH_RETRIES,
+            page_number=1,
+        ).data
         if "data" not in data:
             return None
         user = data["data"]
@@ -63,7 +79,7 @@ def get_user_profile(
             "tweet_count": metrics.get("tweet_count", 0),
             "listed_count": metrics.get("listed_count", 0),
         }
-    except (requests.exceptions.RequestException, ValueError):
+    except (RequestAttemptsError, ValueError):
         return None
 
 
@@ -83,54 +99,21 @@ def fetch_user_tweets(
 
     tweets = []
     for page in range(max_pages):
-        data = None
-        response = None
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = request_get(url, headers=headers, params=params, timeout=10)
-                if response.status_code == 429:
-                    reset_time = response.headers.get("x-rate-limit-reset")
-                    if reset_time is None:
-                        wait_seconds = min(2 ** (attempt - 1), 8)
-                    else:
-                        try:
-                            wait_seconds = max(0, int(float(reset_time)) - int(time.time()))
-                        except (TypeError, ValueError) as error:
-                            raise TweetFetchError("API 限流重置时间无效") from error
-                    if wait_seconds > MAX_RATE_LIMIT_WAIT:
-                        raise TweetFetchError(f"API 限流需等待 {wait_seconds} 秒，超过最大等待时间")
-                    if attempt == max_retries:
-                        raise TweetFetchError(f"API 限流，重试 {max_retries} 次后仍未恢复")
-                    print(f"⏳ API 限流，{wait_seconds} 秒后重试 ({attempt}/{max_retries})...")
-                    time.sleep(wait_seconds)
-                    continue
-
-                response.raise_for_status()
-                data = response.json()
-                break
-            except requests.exceptions.HTTPError as error:
-                status = error.response.status_code if error.response is not None else 0
-                retryable = status >= 500 or status == 0
-                if status in (401, 403) or not retryable or attempt == max_retries:
-                    raise TweetFetchError(f"第 {page + 1} 页 HTTP 错误（{status or 'unknown'}）") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页 HTTP {status}，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                time.sleep(delay)
-            except requests.exceptions.RequestException as error:
-                if attempt == max_retries:
-                    raise TweetFetchError(f"第 {page + 1} 页网络错误，重试 {max_retries} 次后仍失败") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页网络错误，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                time.sleep(delay)
-            except ValueError as error:
-                if attempt == max_retries:
-                    raise TweetFetchError(f"第 {page + 1} 页响应解析失败") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页响应解析失败，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                time.sleep(delay)
-
-        if response is None or data is None:
-            raise TweetFetchError(f"第 {page + 1} 页未能获取有效响应")
+        try:
+            attempt_result = request_json_with_retries(
+                url,
+                headers=headers,
+                params=params,
+                request_get=request_get,
+                max_retries=max_retries,
+                request_budget=max_retries,
+                page_number=page + 1,
+                max_rate_limit_wait=MAX_RATE_LIMIT_WAIT,
+            )
+        except RequestAttemptsError as error:
+            raise TweetFetchError(str(error)) from error
+        response = attempt_result.response
+        data = attempt_result.data
 
         page_tweets = data.get("data", [])
         if not page_tweets:

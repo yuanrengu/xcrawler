@@ -14,7 +14,7 @@ from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.embeddings import encode_texts_with_cache
 from xcrawler.services.llm_calls import LLMCallRecorder
-from xcrawler.services.records import make_translated_tweet
+from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
 from xcrawler.services.sampling import sample_evenly
 from xcrawler.services.translation import (
     translate_batch,
@@ -329,7 +329,22 @@ def main():
         # 3. 清洗 + 批量翻译
         if args.no_translate:
             if args.replace:
-                save_json(raw_file, raw_tweets)
+                translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
+                if os.path.exists(translated_file):
+                    existing_translated = normalize_translated_tweets(load_json(translated_file, default=[]))
+                    snapshot_ids = {str(tweet["id"]) for tweet in raw_tweets}
+                    retained_translations = [
+                        item
+                        for item in existing_translated
+                        if item.get("tweet_id") is not None and str(item["tweet_id"]) in snapshot_ids
+                    ]
+                    replace_json_files_atomically({
+                        raw_file: raw_tweets,
+                        translated_file: retained_translations,
+                    })
+                    print(f"🧹 snapshot 已移除 {len(existing_translated) - len(retained_translations)} 条过期译文")
+                else:
+                    save_json(raw_file, raw_tweets)
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
             print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
             return 0

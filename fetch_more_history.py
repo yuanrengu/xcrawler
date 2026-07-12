@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import time
 from dataclasses import asdict, dataclass
@@ -16,6 +15,7 @@ from datetime import datetime
 import requests
 
 from xcrawler.clients import x_api
+from xcrawler.clients.retry import RequestAttemptsError, request_json_with_retries
 from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
@@ -41,6 +41,12 @@ MAX_RATE_LIMIT_WAIT = 60
 
 class FetchError(RuntimeError):
     """抓取未能成功完成，不应将其视为“没有新数据”。"""
+
+    def __init__(self, message: str, *, requests_used: int = 0, retries: int = 0, stop_reason: str = "error"):
+        super().__init__(message)
+        self.requests_used = requests_used
+        self.retries = retries
+        self.stop_reason = stop_reason
 
 
 @dataclass
@@ -87,6 +93,9 @@ def save_fetch_status(
     forward: FetchBatchResult | None = None,
     backward: FetchBatchResult | None = None,
     error: str | None = None,
+    error_requests: int = 0,
+    error_retries: int = 0,
+    error_stop_reason: str | None = None,
 ) -> None:
     save_json(
         os.path.join(cache_dir, f"{username}_fetch_status.json"),
@@ -99,12 +108,13 @@ def save_fetch_status(
             "backward": backward.to_dict() if backward else None,
             "requests_used": (forward.requests_used if forward else 0) + (
                 backward.requests_used if backward else 0
-            ),
+            ) + error_requests,
             "data_pages": (forward.data_pages if forward else 0) + (
                 backward.data_pages if backward else 0
             ),
-            "retries": (forward.retries if forward else 0) + (backward.retries if backward else 0),
+            "retries": (forward.retries if forward else 0) + (backward.retries if backward else 0) + error_retries,
             "error": error,
+            "error_stop_reason": error_stop_reason,
         },
     )
 
@@ -160,63 +170,29 @@ def fetch_tweets_generic(
 
     page = 0
     while data_pages < max_pages_limit and requests_used < request_budget:
-        response = None
-        data = None
-        for attempt in range(1, max_retries + 1):
-            if requests_used >= request_budget:
-                raise FetchError(f"请求预算已用完（{requests_used}/{request_budget}）")
-            try:
-                requests_used += 1
-                response = requests.get(url, headers=headers, params=params, timeout=10)
-                if response.status_code == 429:
-                    reset_time = response.headers.get("x-rate-limit-reset")
-                    if reset_time is None:
-                        wait_seconds = min(2 ** (attempt - 1), 8)
-                    else:
-                        try:
-                            wait_seconds = max(0, int(float(reset_time)) - int(time.time()))
-                        except (TypeError, ValueError) as error:
-                            raise FetchError("API 限流重置时间无效") from error
-                    if wait_seconds > MAX_RATE_LIMIT_WAIT:
-                        raise FetchError(f"API 限流需等待 {wait_seconds} 秒，超过最大等待时间")
-                    if attempt == max_retries:
-                        raise FetchError(f"API 限流，重试 {max_retries} 次后仍未恢复")
-                    print(f"⏳ API 限流，{wait_seconds} 秒后重试 ({attempt}/{max_retries})...")
-                    retries += 1
-                    time.sleep(wait_seconds)
-                    continue
-
-                response.raise_for_status()
-                data = response.json()
-                break
-            except requests.exceptions.HTTPError as error:
-                status = error.response.status_code if error.response is not None else 0
-                if status in (401, 403):
-                    raise FetchError(f"认证失败（HTTP {status}），请检查 X_BEARER_TOKEN") from error
-                retryable = status >= 500 or status == 0
-                if not retryable or attempt == max_retries:
-                    raise FetchError(f"第 {page + 1} 页 HTTP 错误（{status or 'unknown'}）") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页 HTTP {status}，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                retries += 1
-                time.sleep(delay)
-            except requests.exceptions.RequestException as error:
-                if attempt == max_retries:
-                    raise FetchError(f"第 {page + 1} 页网络错误，重试 {max_retries} 次后仍失败") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页网络错误，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                retries += 1
-                time.sleep(delay)
-            except (json.JSONDecodeError, ValueError) as error:
-                if attempt == max_retries:
-                    raise FetchError(f"第 {page + 1} 页响应解析失败") from error
-                delay = min(2 ** (attempt - 1), 8)
-                print(f"⚠️ 第 {page + 1} 页响应解析失败，{delay} 秒后重试 ({attempt}/{max_retries})...")
-                retries += 1
-                time.sleep(delay)
-
-        if response is None or data is None:
-            raise FetchError(f"第 {page + 1} 页未能获取有效响应")
+        try:
+            attempt_result = request_json_with_retries(
+                url,
+                headers=headers,
+                params=params,
+                request_get=requests.get,
+                max_retries=max_retries,
+                request_budget=request_budget - requests_used,
+                page_number=page + 1,
+                max_rate_limit_wait=MAX_RATE_LIMIT_WAIT,
+                sleep=time.sleep,
+            )
+        except RequestAttemptsError as error:
+            raise FetchError(
+                str(error),
+                requests_used=requests_used + error.requests_used,
+                retries=retries + error.retries,
+                stop_reason=error.stop_reason,
+            ) from error
+        requests_used += attempt_result.requests_used
+        retries += attempt_result.retries
+        response = attempt_result.response
+        data = attempt_result.data
 
         try:
             
@@ -387,7 +363,15 @@ def main():
             )
         except FetchError as error:
             print(f"❌ 新推文抓取失败: {error}")
-            save_fetch_status(CACHE_DIR, TARGET_USERNAME, status="failed", error=str(error))
+            save_fetch_status(
+                CACHE_DIR,
+                TARGET_USERNAME,
+                status="failed",
+                error=str(error),
+                error_requests=error.requests_used,
+                error_retries=error.retries,
+                error_stop_reason=error.stop_reason,
+            )
             return 1
         remaining_pages_quota -= forward_result.requests_used
         tweets = forward_result.tweets
@@ -444,6 +428,9 @@ def main():
                 status="partial",
                 forward=forward_result,
                 error=str(error),
+                error_requests=error.requests_used,
+                error_retries=error.retries,
+                error_stop_reason=error.stop_reason,
             )
             return 2
         tweets = backward_result.tweets
