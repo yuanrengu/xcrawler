@@ -8,7 +8,11 @@ from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
 from xcrawler.paths import ensure_dir, translation_cache_path
 from xcrawler.services.llm_calls import LLMCallRecorder
-from xcrawler.services.records import make_translated_tweet, normalize_translated_tweets
+from xcrawler.services.records import (
+    make_translated_tweet,
+    normalize_translated_tweets,
+    translation_record_is_current,
+)
 from xcrawler.services.translation import translate_batch, translate_text
 from xcrawler.services.translation_cache import (
     TranslationCacheContext,
@@ -17,6 +21,7 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
+from xcrawler.services.tweets import merge_translated_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
@@ -37,7 +42,7 @@ def load_data(username, cache_dir):
 
     raw_tweets = []
     if os.path.exists(raw_file):
-        raw_tweets = load_json(raw_file, default=[])
+        raw_tweets = validate_raw_tweets(load_json(raw_file, default=[]), source=raw_file)
 
     translated_data = []
     if os.path.exists(translated_file):
@@ -109,8 +114,8 @@ def main():
     # 2. Identify tweets to process
     print("🔍 检查待翻译推文...")
 
-    translated_tweet_ids = {
-        str(item.get("tweet_id"))
+    translated_by_id = {
+        str(item.get("tweet_id")): item
         for item in translated_data
         if item.get("tweet_id") is not None
     }
@@ -129,11 +134,14 @@ def main():
             continue
 
         tweet_id = t.get("id")
-        already_translated = (
-            str(tweet_id) in translated_tweet_ids
-            if tweet_id is not None
-            else clean in translated_texts_without_id
-        )
+        if tweet_id is not None:
+            existing_translation = translated_by_id.get(str(tweet_id))
+            already_translated = bool(
+                existing_translation
+                and translation_record_is_current(existing_translation, clean, cache_context.fingerprint)
+            )
+        else:
+            already_translated = clean in translated_texts_without_id
 
         if args.force or not already_translated:
             detected_lang = detect_language(clean)
@@ -211,6 +219,7 @@ def main():
                 translated=translated_text,
                 detected_language=item["lang"],
                 created_at=item["created_at"],
+                config_fingerprint=cache_context.fingerprint,
             ))
 
     if args.force and len(new_translations) != len(to_process):
@@ -221,8 +230,7 @@ def main():
         return 1
 
     if new_translations:
-        current_data = translated_data + new_translations
-        current_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        current_data = merge_translated_tweets(translated_data, new_translations)
 
         print(f"\n💾 保存更新后的翻译数据 ({len(current_data)} 条)...")
         save_json(translated_file_path, current_data)

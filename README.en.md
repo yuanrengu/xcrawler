@@ -50,8 +50,11 @@ Base installation supports fetching, translation, export, and the no-key demo. I
 
 ## Data safety
 
-- Full fetches merge with existing history by default. Use `xcrawler fetch --replace` only when you intentionally want to rebuild the snapshot. Replacement commits raw and translated files together only after every requested translation succeeds.
+- Default full fetches use **archive mode**: fetched records are merged by tweet ID and locally retained history is not deleted when a post disappears remotely.
+- `xcrawler fetch --replace` uses **snapshot mode**: a completely fetched result replaces local history. Replacement commits raw and translated files together only after every requested translation succeeds.
 - A partially completed fetch or translation returns a non-zero exit status; successfully saved partial translations are reported explicitly.
+- `fetch-more --pages` is a shared HTTP request budget for forward fetching, backward fetching, and retries. The latest incremental status is written to `{username}_fetch_status.json` with request, data-page, retry, stop-reason, and partial-state fields.
+- Translation records include source-content and translation-configuration fingerprints so changed source text is retranslated instead of being skipped solely because its tweet ID already exists.
 - `xcrawler translate --force` replaces the primary translation file only when every requested retranslation succeeds.
 - JSON writes are atomic and retain a recovery backup. SQLite is available for structured run and LLM-call metadata.
 - Sensitive life-event evidence is hidden from HTML reports unless explicitly enabled.

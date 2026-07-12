@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import time
+from dataclasses import asdict, dataclass
 from datetime import datetime
 
 import requests
@@ -18,7 +19,7 @@ from xcrawler.clients import x_api
 from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
-from xcrawler.services.tweets import merge_tweets
+from xcrawler.services.tweets import merge_tweets, validate_raw_tweets
 from xcrawler.storage.json_store import JsonStoreError, load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
@@ -42,10 +43,31 @@ class FetchError(RuntimeError):
     """抓取未能成功完成，不应将其视为“没有新数据”。"""
 
 
+@dataclass
+class FetchBatchResult:
+    tweets: list[dict]
+    reached_target: bool
+    data_pages: int
+    requests_used: int
+    retries: int
+    stop_reason: str
+    can_continue: bool = True
+
+    def to_dict(self) -> dict:
+        result = asdict(self)
+        result["tweet_count"] = len(self.tweets)
+        result.pop("tweets")
+        return result
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="智能增量抓取：双向同步（新推文 + 历史补全）")
     parser.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
-    parser.add_argument("--pages", type=cli_validation.positive_int, help=f"最大抓取页数（默认 {MAX_PAGES}）")
+    parser.add_argument(
+        "--pages",
+        type=cli_validation.positive_int,
+        help=f"本次 HTTP 请求预算（Forward/Backward/重试共享，默认 {MAX_PAGES}）",
+    )
     parser.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
     parser.add_argument("--interval", type=cli_validation.non_negative_int, help=f"请求间隔秒数（默认 {REQUEST_INTERVAL}）")
     parser.add_argument("--cache-dir", help=f"缓存目录（默认 {CACHE_DIR}）")
@@ -57,6 +79,36 @@ def get_user_id(username, headers):
     return x_api.get_user_id(username, headers, request_get=requests.get)
 
 
+def save_fetch_status(
+    cache_dir: str,
+    username: str,
+    *,
+    status: str,
+    forward: FetchBatchResult | None = None,
+    backward: FetchBatchResult | None = None,
+    error: str | None = None,
+) -> None:
+    save_json(
+        os.path.join(cache_dir, f"{username}_fetch_status.json"),
+        {
+            "username": username,
+            "mode": "incremental",
+            "status": status,
+            "completed_at": datetime.now().isoformat(timespec="seconds"),
+            "forward": forward.to_dict() if forward else None,
+            "backward": backward.to_dict() if backward else None,
+            "requests_used": (forward.requests_used if forward else 0) + (
+                backward.requests_used if backward else 0
+            ),
+            "data_pages": (forward.data_pages if forward else 0) + (
+                backward.data_pages if backward else 0
+            ),
+            "retries": (forward.retries if forward else 0) + (backward.retries if backward else 0),
+            "error": error,
+        },
+    )
+
+
 def fetch_tweets_generic(
     user_id,
     headers,
@@ -66,6 +118,7 @@ def fetch_tweets_generic(
     max_pages_limit=MAX_PAGES,
     description="抓取",
     max_retries=MAX_RETRIES,
+    request_budget=None,
 ):
     """
     通用抓取函数
@@ -76,7 +129,7 @@ def fetch_tweets_generic(
     :param stop_date: 如果遇到早于此日期的推文，停止抓取 (仅用于 Backward 模式)
     :param max_pages_limit: 本次调用的最大页数限制
     :param description: 描述文本
-    :return: (tweets_list, reached_stop_date, pages_fetched)
+    :return: 结构化抓取结果，区分数据页、真实请求、重试和停止原因
     """
     url = f"https://api.twitter.com/2/users/{user_id}/tweets"
     params = {
@@ -92,7 +145,12 @@ def fetch_tweets_generic(
 
     all_tweets = []
     reached_target = False
-    pages_fetched = 0
+    data_pages = 0
+    requests_used = 0
+    retries = 0
+    stop_reason = "request_budget"
+    can_continue = True
+    request_budget = request_budget if request_budget is not None else max_pages_limit * max_retries
     
     print(f"🚀 {description} (最大页数限制: {max_pages_limit})...")
     if since_id:
@@ -100,11 +158,15 @@ def fetch_tweets_generic(
     if until_id:
         print(f"   📍 范围: ID {until_id} 之前 (历史推文)")
 
-    for page in range(max_pages_limit):
+    page = 0
+    while data_pages < max_pages_limit and requests_used < request_budget:
         response = None
         data = None
         for attempt in range(1, max_retries + 1):
+            if requests_used >= request_budget:
+                raise FetchError(f"请求预算已用完（{requests_used}/{request_budget}）")
             try:
+                requests_used += 1
                 response = requests.get(url, headers=headers, params=params, timeout=10)
                 if response.status_code == 429:
                     reset_time = response.headers.get("x-rate-limit-reset")
@@ -120,6 +182,7 @@ def fetch_tweets_generic(
                     if attempt == max_retries:
                         raise FetchError(f"API 限流，重试 {max_retries} 次后仍未恢复")
                     print(f"⏳ API 限流，{wait_seconds} 秒后重试 ({attempt}/{max_retries})...")
+                    retries += 1
                     time.sleep(wait_seconds)
                     continue
 
@@ -135,18 +198,21 @@ def fetch_tweets_generic(
                     raise FetchError(f"第 {page + 1} 页 HTTP 错误（{status or 'unknown'}）") from error
                 delay = min(2 ** (attempt - 1), 8)
                 print(f"⚠️ 第 {page + 1} 页 HTTP {status}，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                retries += 1
                 time.sleep(delay)
             except requests.exceptions.RequestException as error:
                 if attempt == max_retries:
                     raise FetchError(f"第 {page + 1} 页网络错误，重试 {max_retries} 次后仍失败") from error
                 delay = min(2 ** (attempt - 1), 8)
                 print(f"⚠️ 第 {page + 1} 页网络错误，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                retries += 1
                 time.sleep(delay)
             except (json.JSONDecodeError, ValueError) as error:
                 if attempt == max_retries:
                     raise FetchError(f"第 {page + 1} 页响应解析失败") from error
                 delay = min(2 ** (attempt - 1), 8)
                 print(f"⚠️ 第 {page + 1} 页响应解析失败，{delay} 秒后重试 ({attempt}/{max_retries})...")
+                retries += 1
                 time.sleep(delay)
 
         if response is None or data is None:
@@ -157,7 +223,10 @@ def fetch_tweets_generic(
             page_tweets = data.get("data", [])
             if not page_tweets:
                 print(f"📭 第 {page + 1} 页无数据 (本批次结束)")
+                stop_reason = "no_data"
                 break
+
+            page_tweets = validate_raw_tweets(page_tweets, source=f"X API page {page + 1}")
 
             kept_tweets = page_tweets
             if stop_date:
@@ -170,7 +239,7 @@ def fetch_tweets_generic(
                         reached_target = True
 
             all_tweets.extend(kept_tweets)
-            pages_fetched += 1
+            data_pages += 1
             
             # 获取本页最早时间
             oldest_in_page = parse_twitter_datetime(page_tweets[-1]["created_at"])
@@ -180,6 +249,7 @@ def fetch_tweets_generic(
             # 仅在向历史抓取时检查日期停止条件
             if reached_target:
                 print(f"✅ 已到达目标日期 {stop_date.strftime('%Y-%m-%d')}！")
+                stop_reason = "target_date"
                 break
             
             # 检查剩余配额
@@ -189,21 +259,33 @@ def fetch_tweets_generic(
                     print(f"   剩余配额: {remaining} 次")
                if int(remaining) < 2:
                     print("⚠️ 配额即将耗尽，暂停抓取")
+                    stop_reason = "rate_limit_low"
+                    can_continue = False
                     break
             
             # 获取下一页token
             token = data.get("meta", {}).get("next_token")
             if not token:
                 print("✅ 已抓取该区间所有推文")
+                stop_reason = "no_next_token"
                 break
             params["pagination_token"] = token
+            page += 1
             
             time.sleep(REQUEST_INTERVAL)
             
         except (KeyError, TypeError, ValueError) as error:
             raise FetchError(f"第 {page + 1} 页推文数据结构无效") from error
     
-    return all_tweets, reached_target, pages_fetched
+    return FetchBatchResult(
+        tweets=all_tweets,
+        reached_target=reached_target,
+        data_pages=data_pages,
+        requests_used=requests_used,
+        retries=retries,
+        stop_reason=stop_reason,
+        can_continue=can_continue,
+    )
 
 
 def main():
@@ -231,10 +313,11 @@ def main():
     print("=" * 60)
     print(f"🎯 目标用户: {TARGET_USERNAME}")
     print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📊 每日最大抓取页数: {MAX_PAGES}")
+    print(f"📊 本次 HTTP 请求预算: {MAX_PAGES}")
     print("=" * 60 + "\n")
     print("📋 执行计划:")
-    print(f"   预计最多请求: {MAX_PAGES} 页 / {MAX_PAGES * 100} 条")
+    print(f"   最多 HTTP 请求: {MAX_PAGES} 次（包含重试）")
+    print(f"   理论最大数据量: {MAX_PAGES * 100} 条（无重试且每页满载时）")
     print(f"   请求间隔: {REQUEST_INTERVAL} 秒")
     print(f"   历史目标日期: {TARGET_DATE.strftime('%Y-%m-%d')}")
     print()
@@ -245,11 +328,9 @@ def main():
     
     if os.path.exists(raw_file):
         try:
-            existing_tweets = load_json(raw_file, default=[])
-            if not isinstance(existing_tweets, list):
-                raise JsonStoreError(f"原始推文文件必须是 JSON 数组: {raw_file}")
+            existing_tweets = validate_raw_tweets(load_json(raw_file, default=[]), source=raw_file)
             print(f"💾 已加载现有数据: {len(existing_tweets)} 条")
-        except JsonStoreError as error:
+        except (JsonStoreError, ValueError) as error:
             print(f"❌ 无法安全加载现有数据: {error}")
             return 1
     else:
@@ -290,25 +371,33 @@ def main():
     # 3. 阶段一：抓取新推文 (Forward)
     # ==========================
     new_tweets_forward = []
+    forward_result = None
+    backward_result = None
     print(f"🔄 剩余配额: {remaining_pages_quota} 页")
     
     if newest_id:
         print("📥 阶段一: 检查新发布的推文...")
         try:
-            tweets, _, pages_used = fetch_tweets_generic(
+            forward_result = fetch_tweets_generic(
                 user_id, headers,
                 since_id=newest_id,
                 max_pages_limit=remaining_pages_quota,
+                request_budget=remaining_pages_quota,
                 description="抓取最新推文",
             )
         except FetchError as error:
             print(f"❌ 新推文抓取失败: {error}")
+            save_fetch_status(CACHE_DIR, TARGET_USERNAME, status="failed", error=str(error))
             return 1
-        remaining_pages_quota -= pages_used
+        remaining_pages_quota -= forward_result.requests_used
+        tweets = forward_result.tweets
         
         if tweets:
             print(f"✅ 发现 {len(tweets)} 条新推文！")
             new_tweets_forward = tweets
+            existing_tweets = merge_tweets(existing_tweets, new_tweets_forward)
+            save_json(raw_file, existing_tweets)
+            print(f"💾 Forward 阶段已安全保存: {len(existing_tweets)} 条")
         else:
             print("✅ 没有发现更新的推文")
         print("-" * 30 + "\n")
@@ -332,52 +421,63 @@ def main():
     if remaining_pages_quota <= 0:
         print(f"⚠️ 配额已用完 ({MAX_PAGES} 页)，跳过历史抓取")
         need_history = False
+    if forward_result and not forward_result.can_continue:
+        print(f"⚠️ Forward 阶段因 {forward_result.stop_reason} 停止，跳过历史抓取")
+        need_history = False
 
     if need_history:
         print(f"📥 阶段二: 补充历史推文... (剩余配额: {remaining_pages_quota} 页)")
         try:
-            tweets, reached, pages_used = fetch_tweets_generic(
+            backward_result = fetch_tweets_generic(
                 user_id, headers,
                 until_id=oldest_id,  # 从已知最早的往前
                 stop_date=TARGET_DATE,
                 max_pages_limit=remaining_pages_quota,
+                request_budget=remaining_pages_quota,
                 description="抓取历史推文",
             )
         except FetchError as error:
             print(f"❌ 历史推文抓取失败: {error}")
-            return 1
+            save_fetch_status(
+                CACHE_DIR,
+                TARGET_USERNAME,
+                status="partial",
+                forward=forward_result,
+                error=str(error),
+            )
+            return 2
+        tweets = backward_result.tweets
         new_tweets_backward = tweets
-        remaining_pages_quota -= pages_used
+        remaining_pages_quota -= backward_result.requests_used
         
         if tweets:
             print(f"✅ 抓取到 {len(tweets)} 条历史推文")
+            existing_tweets = merge_tweets(existing_tweets, new_tweets_backward)
+            save_json(raw_file, existing_tweets)
+            print(f"💾 Backward 阶段已安全保存: {len(existing_tweets)} 条")
         else:
             print("⚠️ 未能抓取到更多历史推文 (可能已达API限制或无更多数据)")
         print("-" * 30 + "\n")
 
-    # ==========================
-    # 5. 合并与保存
-    # ==========================
-    all_new_tweets = new_tweets_forward + new_tweets_backward
-    
-    if all_new_tweets:
-        print(f"📊 总计新增抓取: {len(all_new_tweets)} 条")
-        
-        # 合并已有和新增数据，避免增量抓取覆盖历史记录。
-        final_list = merge_tweets(existing_tweets, all_new_tweets)
-
-        print(f"💾 保存总推文数: {len(final_list)} 条")
-        
-        # 写入文件
-        save_json(raw_file, final_list)
-            
-        print(f"✅ 数据已更新至: {raw_file}")
-        
-    else:
+    if not new_tweets_forward and not new_tweets_backward:
         print("🎉 数据已是最新，无需更新")
 
+    partial_reasons = {"request_budget", "rate_limit_low"}
+    is_partial = bool(
+        (forward_result and forward_result.stop_reason in partial_reasons)
+        or (backward_result and backward_result.stop_reason in partial_reasons)
+        or (need_history and backward_result is None)
+    )
+    save_fetch_status(
+        CACHE_DIR,
+        TARGET_USERNAME,
+        status="partial" if is_partial else "success",
+        forward=forward_result,
+        backward=backward_result,
+    )
+
     print("\n" + "=" * 60)
-    print("✅ 所有任务完成！")
+    print("✅ 所有任务完成！" if not is_partial else "⚠️ 本次在预算/配额边界停止，已记录 partial 状态")
     print("=" * 60)
     return 0
 

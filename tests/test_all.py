@@ -484,8 +484,14 @@ class TestFetchMoreHistory:
         monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
 
         fetch_calls = MagicMock(side_effect=[
-            ([{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}], False, 1),
-            ([{"id": "0", "text": "older history", "created_at": "2024-12-31T00:00:00Z"}], False, 1),
+            fetch_more_history.FetchBatchResult(
+                [{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}],
+                False, 1, 1, 0, "no_next_token",
+            ),
+            fetch_more_history.FetchBatchResult(
+                [{"id": "0", "text": "older history", "created_at": "2024-12-31T00:00:00Z"}],
+                False, 1, 1, 0, "no_next_token",
+            ),
         ])
         monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", fetch_calls)
 
@@ -515,16 +521,18 @@ class TestFetchMoreHistory:
             }
             mock_get.return_value = response
 
-            tweets, reached, pages = fetch_more_history.fetch_tweets_generic(
+            result = fetch_more_history.fetch_tweets_generic(
                 "user-id",
                 {"Authorization": "Bearer test-token"},
                 stop_date=datetime(2024, 1, 1),
                 max_pages_limit=1,
             )
 
-            assert reached is True
-            assert pages == 1
-            assert [tweet["id"] for tweet in tweets] == ["2"]
+            assert result.reached_target is True
+            assert result.data_pages == 1
+            assert result.requests_used == 1
+            assert result.stop_reason == "target_date"
+            assert [tweet["id"] for tweet in result.tweets] == ["2"]
         finally:
             fetch_more_history.REQUEST_INTERVAL = old_interval
 
@@ -559,14 +567,16 @@ class TestFetchMoreHistory:
         success.json.return_value = {"data": [], "meta": {}}
         mock_get.side_effect = [limited, success]
 
-        tweets, reached, pages = fetch_more_history.fetch_tweets_generic(
+        result = fetch_more_history.fetch_tweets_generic(
             "user-id",
             {},
             max_pages_limit=1,
             max_retries=2,
         )
 
-        assert (tweets, reached, pages) == ([], False, 0)
+        assert result.tweets == []
+        assert result.requests_used == 2
+        assert result.retries == 1
         mock_sleep.assert_called_once_with(0)
 
     @patch("fetch_more_history.time.sleep")
@@ -580,9 +590,12 @@ class TestFetchMoreHistory:
         success.json.return_value = {"data": [], "meta": {}}
         mock_get.side_effect = [limited, success]
 
-        assert fetch_more_history.fetch_tweets_generic(
+        result = fetch_more_history.fetch_tweets_generic(
             "user-id", {}, max_pages_limit=1, max_retries=2
-        ) == ([], False, 0)
+        )
+        assert result.tweets == []
+        assert result.requests_used == 2
+        assert result.retries == 1
         mock_sleep.assert_called_once_with(1)
 
     def test_main_returns_failure_when_incremental_fetch_fails(self, tmp_path, monkeypatch):
@@ -608,6 +621,59 @@ class TestFetchMoreHistory:
         )
 
         assert fetch_more_history.main() == 1
+
+    def test_backward_failure_keeps_forward_data_and_records_partial(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        raw_file = tmp_path / "alice_raw_tweets.json"
+        raw_file.write_text(json.dumps([
+            {"id": "2", "text": "existing latest", "created_at": "2025-01-02T00:00:00Z"},
+            {"id": "1", "text": "existing history", "created_at": "2025-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=2, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
+        monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", MagicMock(side_effect=[
+            fetch_more_history.FetchBatchResult(
+                [{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}],
+                False, 1, 1, 0, "no_next_token",
+            ),
+            fetch_more_history.FetchError("backward failed"),
+        ]))
+
+        assert fetch_more_history.main() == 2
+        assert [item["id"] for item in json.loads(raw_file.read_text(encoding="utf-8"))] == ["3", "2", "1"]
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "partial"
+        assert status["forward"]["requests_used"] == 1
+        assert status["error"] == "backward failed"
+
+    def test_low_rate_limit_stops_before_backward_phase(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        raw_file = tmp_path / "alice_raw_tweets.json"
+        raw_file.write_text(json.dumps([
+            {"id": "1", "text": "existing tweet", "created_at": "2025-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=3, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
+        fetch = MagicMock(return_value=fetch_more_history.FetchBatchResult(
+            [], False, 1, 1, 0, "rate_limit_low", can_continue=False,
+        ))
+        monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", fetch)
+
+        assert fetch_more_history.main() == 0
+        assert fetch.call_count == 1
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "partial"
+        assert status["forward"]["stop_reason"] == "rate_limit_low"
 
 
 # ==============================
@@ -943,6 +1009,29 @@ class TestFullFetchFailures:
         assert json.loads(raw_path.read_text(encoding="utf-8")) == old_raw
         assert json.loads(translated_path.read_text(encoding="utf-8")) == old_translated
 
+    def test_successful_translation_clears_stale_failure_list(self, tmp_path, monkeypatch):
+        import main
+
+        failed_path = tmp_path / "alice_failed.json"
+        failed_path.write_text('[{"tweet_id":"old"}]', encoding="utf-8")
+        raw = [{"id": "1", "text": "long english tweet", "created_at": "2026-01-01T00:00:00Z"}]
+        args = SimpleNamespace(
+            user="alice", pages=1, batch_size=10, model=None, cache_dir=str(tmp_path),
+            analysis_limit=100, no_translate=False, replace=False, storage_backend="json", sqlite_path=None,
+        )
+        monkeypatch.setattr(main, "TARGET_USERNAME", main.TARGET_USERNAME)
+        monkeypatch.setattr(main, "CACHE_DIR", main.CACHE_DIR)
+        monkeypatch.setattr(main, "parse_args", lambda: args)
+        monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+        monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+        monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: raw)
+        monkeypatch.setattr(main, "deepseek_translate_batch", lambda texts, langs: ["新译文"])
+        monkeypatch.setattr(main, "save_translation_cache", lambda cache: None)
+
+        assert main.main() == 0
+        assert json.loads(failed_path.read_text(encoding="utf-8")) == []
+
 
 # ==============================
 # 集成级测试
@@ -1050,6 +1139,35 @@ class TestTranslateSyncImport:
 
         assert translate_sync.main() == 1
         assert not (tmp_path / "alice_translated.json").exists()
+
+    def test_changed_source_text_for_existing_id_is_retranslated(self, tmp_path, monkeypatch):
+        import sys
+
+        import translate_sync
+
+        raw = [{"id": "1", "text": "updated long text", "created_at": "2024-01-02T00:00:00Z"}]
+        translated = [{
+            "tweet_id": "1",
+            "original": "previous long text",
+            "translated": "旧译文",
+            "detected_language": "en",
+            "created_at": "2024-01-02T00:00:00Z",
+        }]
+        (tmp_path / "alice_raw_tweets.json").write_text(json.dumps(raw), encoding="utf-8")
+        (tmp_path / "alice_translated.json").write_text(json.dumps(translated), encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["translate_sync.py", "--user", "alice", "--cache-dir", str(tmp_path)])
+        translate_batch_mock = MagicMock(return_value=["新译文"])
+        monkeypatch.setattr(translate_sync, "translate_batch", translate_batch_mock)
+        monkeypatch.setattr(translate_sync, "detect_language", lambda text: "en")
+
+        assert translate_sync.main() == 0
+        translate_batch_mock.assert_called_once()
+        saved = json.loads((tmp_path / "alice_translated.json").read_text(encoding="utf-8"))
+        assert len(saved) == 1
+        updated = saved[0]
+        assert updated["original"] == "updated long text"
+        assert updated["source_fingerprint"]
+        assert updated["config_fingerprint"]
 
 
 class TestAnalysisImports:
@@ -1969,6 +2087,31 @@ class TestPathValidation:
 
         with pytest.raises(ValueError, match="文件后缀"):
             cache_path(str(tmp_path), "alice", suffix)
+
+
+class TestRawTweetValidation:
+    """测试 raw tweet 结构错误不会在合并时被静默丢弃。"""
+
+    @pytest.mark.parametrize("record, message", [
+        ({"text": "missing id", "created_at": "2026-01-01T00:00:00Z"}, "id"),
+        ({"id": "1", "created_at": "2026-01-01T00:00:00Z"}, "text"),
+        ({"id": "1", "text": "bad date", "created_at": "yesterday"}, "created_at"),
+    ])
+    def test_invalid_raw_record_is_rejected(self, record, message):
+        from xcrawler.services.tweets import TweetSchemaError, validate_raw_tweets
+
+        with pytest.raises(TweetSchemaError, match=message):
+            validate_raw_tweets([record])
+
+    def test_duplicate_raw_ids_are_rejected(self):
+        from xcrawler.services.tweets import TweetSchemaError, validate_raw_tweets
+
+        records = [
+            {"id": "1", "text": "first", "created_at": "2026-01-01T00:00:00Z"},
+            {"id": "1", "text": "second", "created_at": "2026-01-02T00:00:00Z"},
+        ]
+        with pytest.raises(TweetSchemaError, match="重复 id"):
+            validate_raw_tweets(records)
 
 
 class TestConfigValidation:

@@ -162,6 +162,8 @@ xcrawler analyze interest
 xcrawler analyze behavior
 ```
 
+`xcrawler fetch` 默认为 **archive 模式**：按 tweet ID 合并并保留本地历史，远端已删除推文不会自动从本地删除。`xcrawler fetch --replace` 为 **snapshot 模式**：仅在全量分页完整且翻译全部成功后，同时替换 raw/translated 快照。
+
 #### 方案 B：增量抓取（推荐 Free API）
 
 ```bash
@@ -175,6 +177,8 @@ xcrawler translate
 ./refetch_data.sh --incremental    # 增量抓取（推荐）
 ./refetch_data.sh                  # 全量重新抓取
 ```
+
+`fetch-more --pages` 表示 Forward、Backward 和重试共享的 HTTP 请求预算，不是成功数据页数。最近一次的请求数、数据页、重试数、stop reason 和 partial 状态会写入 `{username}_fetch_status.json`。Forward/Backward 各自成功后立即原子合并保存，后一阶段失败不会丢失前一阶段成果。
 
 #### 方案 C：仅分析现有数据
 

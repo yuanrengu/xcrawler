@@ -27,7 +27,7 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     translation_cache_entry_count,
 )
-from xcrawler.services.tweets import merge_translated_tweets, merge_tweets
+from xcrawler.services.tweets import merge_translated_tweets, merge_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.json_store import load_json, replace_json_files_atomically, save_json
 from xcrawler.utils import cli_validation
@@ -70,7 +70,11 @@ def parse_args():
     parser.add_argument("--analysis-limit", type=cli_validation.positive_int, default=ANALYSIS_LIMIT,
                         help=f"聚类和画像最多分析的翻译推文数（默认 {ANALYSIS_LIMIT}）")
     parser.add_argument("--no-translate", action="store_true", help="跳过翻译，仅抓取")
-    parser.add_argument("--replace", action="store_true", help="使用本次结果替换历史快照（默认安全合并）")
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="snapshot 模式：使用本次完整结果替换历史（默认 archive 合并模式）",
+    )
     parser.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
                         default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
     parser.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
@@ -306,6 +310,7 @@ def main():
         # 2. 抓取推文
         print("📥 抓取推文（已排除转发和回复）...")
         raw_tweets = fetch_tweets(user_id)
+        raw_tweets = validate_raw_tweets(raw_tweets, source="X API full fetch")
         print(f"📊 共抓取 {len(raw_tweets)} 条原创推文\n")
         
         if len(raw_tweets) == 0:
@@ -315,8 +320,7 @@ def main():
         # 保存原始推文：默认保留历史，只有 --replace 显式覆盖。
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
         existing_raw = load_json(raw_file, default=[])
-        if not isinstance(existing_raw, list):
-            raise ValueError(f"原始推文文件必须是 JSON 数组: {raw_file}")
+        existing_raw = validate_raw_tweets(existing_raw, source=raw_file)
         if not args.replace:
             raw_tweets = merge_tweets(existing_raw, raw_tweets)
             save_json(raw_file, raw_tweets)
@@ -367,6 +371,7 @@ def main():
                     translated=translated_text,
                     detected_language=lang,
                     created_at=created,
+                    config_fingerprint=_translation_cache_context().fingerprint,
                 ))
                 save_counter += 1
                 if save_counter % 50 == 0:
@@ -402,11 +407,14 @@ def main():
         print()
 
         # 保存失败列表供下次重试
+        failed_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_failed.json")
         if failed_list:
-            failed_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_failed.json")
             save_json(failed_file, failed_list)
             print(f"⚠️ {len(failed_list)} 条翻译失败，已保存至: {failed_file}")
             print("   下次运行将自动重试\n")
+        elif os.path.exists(failed_file):
+            save_json(failed_file, [])
+            print(f"✅ 已清理过期翻译失败清单: {failed_file}\n")
         
         # 显示语言统计
         print("\n📊 语言分布统计:")

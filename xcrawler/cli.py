@@ -76,12 +76,20 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--batch-size", type=cli_validation.positive_int, help="每批翻译条数")
     fetch.add_argument("--analysis-limit", type=cli_validation.positive_int, help="聚类和画像最多分析的翻译推文数")
     fetch.add_argument("--no-translate", action="store_true", help="仅抓取不翻译")
-    fetch.add_argument("--replace", action="store_true", help="使用本次结果替换历史快照（默认安全合并）")
+    fetch.add_argument(
+        "--replace",
+        action="store_true",
+        help="snapshot 模式：完整替换历史（默认 archive 合并模式）",
+    )
     fetch.set_defaults(handler=_handle_fetch)
 
     fetch_more = subparsers.add_parser("fetch-more", help="智能增量抓取新推文和历史推文")
     _add_common_options(fetch_more)
-    fetch_more.add_argument("--pages", type=cli_validation.positive_int, help="最大抓取页数")
+    fetch_more.add_argument(
+        "--pages",
+        type=cli_validation.positive_int,
+        help="HTTP 请求预算（Forward/Backward/重试共享）",
+    )
     fetch_more.add_argument("--target-date", help="历史抓取目标日期，格式 YYYY-MM-DD")
     fetch_more.add_argument("--interval", type=cli_validation.non_negative_int, help="请求间隔秒数")
     fetch_more.set_defaults(handler=_handle_fetch_more)

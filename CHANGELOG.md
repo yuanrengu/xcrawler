@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full timeline fetching now retries transient failures and fails explicitly when any later page cannot be fetched, instead of returning a partial result as complete
 - `xcrawler fetch --replace` commits raw and translated snapshots together and preserves both previous files when translation is incomplete or either replacement fails
 - Translation commands now return a non-zero status when requested translations are partially or completely unsuccessful
+- Incremental forward/backward phases persist independently and record structured success/partial/failed status with request, data-page, retry, and stop-reason metrics
+- Raw tweet inputs are schema-validated before merge; missing IDs, invalid timestamps, non-string text, and duplicate IDs are rejected instead of silently dropped
+- Translation records include source and configuration fingerprints, causing changed source text to be retranslated
+- Successful translation runs clear stale failure lists
+
+### Changed
+- `fetch-more --pages` is now explicitly a shared HTTP request budget that includes retries
+- Full fetch behavior is documented as archive mode by default and snapshot mode with `--replace`
 
 ## [0.4.0] - 2026-07-11
 
