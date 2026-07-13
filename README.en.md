@@ -1,6 +1,6 @@
 # xcrawler
 
-[中文](README.md) | [English](README.en.md)
+[中文](https://github.com/yuanrengu/xcrawler/blob/main/README.md) | [English](https://github.com/yuanrengu/xcrawler/blob/main/README.en.md)
 
 xcrawler turns a public X/Twitter timeline into a local, evidence-linked profile report. It fetches public posts, translates them, analyzes interests, behavior, sentiment, and social signals, then stores JSON, CSV, charts, and HTML reports on your machine.
 
@@ -9,9 +9,7 @@ xcrawler turns a public X/Twitter timeline into a local, evidence-linked profile
 ## 60-second demo — no API key
 
 ```bash
-git clone https://github.com/yuanrengu/xcrawler.git
-cd xcrawler
-python3 -m pip install -e .
+python3 -m pip install xcrawler-ai
 xcrawler demo
 ```
 
@@ -20,8 +18,8 @@ The demo writes fictional sample data and an evidence-linked HTML report to `dem
 ## Full installation
 
 ```bash
-python3 -m pip install -e ".[all]"
-cp .env.example .env
+python3 -m pip install "xcrawler-ai[all]"
+touch .env
 ```
 
 Configure `X_BEARER_TOKEN`, `DEEPSEEK_API_KEY`, and `TARGET_USERNAME` in `.env`, then run:
@@ -68,7 +66,7 @@ pytest -ra
 python3 -m build
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [CHANGELOG.md](CHANGELOG.md) for project policies and release history.
+See [CONTRIBUTING.md](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md), [SECURITY.md](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md), and [CHANGELOG.md](https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md) for project policies and release history.
 
 ## License
 

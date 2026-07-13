@@ -1,14 +1,14 @@
 # xcrawler
 
-[中文](README.md) | [English](README.en.md)
+[中文](https://github.com/yuanrengu/xcrawler/blob/main/README.md) | [English](https://github.com/yuanrengu/xcrawler/blob/main/README.en.md)
 
 <p align="center">
-  <img src="assets/note.png" alt="xcrawler report preview" width="800">
+  <img src="https://raw.githubusercontent.com/yuanrengu/xcrawler/main/assets/note.png" alt="xcrawler report preview" width="800">
 </p>
 
 <p align="center">
   <a href="https://github.com/yuanrengu/xcrawler/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/yuanrengu/xcrawler/test.yml?branch=main&label=tests" alt="Tests"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://github.com/yuanrengu/xcrawler/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
 </p>
 
@@ -78,10 +78,10 @@ python3 -m pip install -e ".[ml,viz]"
 
 ### 2. 配置 API 密钥
 
-从示例文件创建 `.env`，然后填入自己的 API 密钥：
+在运行命令的目录创建 `.env`，然后填入自己的 API 密钥：
 
 ```bash
-cp .env.example .env
+touch .env
 ```
 
 ```bash
@@ -125,7 +125,7 @@ OPENAI_BASE_URL=https://api.openai.com
 
 **多用户分析：**
 - 修改 `.env` 中的 `TARGET_USERNAME` 即可切换用户
-- 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
+- 详见 [CONFIG_GUIDE.md](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md)
 
 ### 3. 运行分析
 
@@ -836,7 +836,7 @@ CACHE_DIR = "cache"            # 缓存目录
 TIMEZONE_OFFSET = 8            # 时区偏移（UTC+N），默认8（中国）
 ```
 
-**多用户配置详见：** [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
+**多用户配置详见：** [CONFIG_GUIDE.md](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md)
 
 ## 📋 依赖说明
 
@@ -863,7 +863,7 @@ python3 -m pip install -e ".[all]"
 | 全功能 | `pip install -e ".[all]"` | 聚类 + 可视化，推荐首次安装 |
 | 测试 | `pip install -e ".[test]"` | pytest 测试框架 |
 
-完整依赖列表见 [`pyproject.toml`](pyproject.toml)。
+完整依赖列表见 [`pyproject.toml`](https://github.com/yuanrengu/xcrawler/blob/main/pyproject.toml)。
 
 ## 🔍 使用场景
 
@@ -967,7 +967,7 @@ chmod +x refetch_data.sh
 ### 问题10: "文件名包含用户名"
 这是正常设计，支持多用户分析：
 - 修改 `.env` 中的 `TARGET_USERNAME` 即可切换用户
-- 详见 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)
+- 详见 [CONFIG_GUIDE.md](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md)
 
 ## 🧪 运行测试
 
@@ -1006,7 +1006,11 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 🔄 更新日志
 
-### v0.4.1 - 抓取事务与增量状态机 🆕
+### v0.4.2 - PyPI 项目页兼容性 🆕
+- ✅ **项目预览**：README 主图使用绝对 HTTPS 地址，可在 GitHub 与 PyPI 同时显示
+- ✅ **文档链接**：语言切换、许可证、配置、贡献和安全链接在 PyPI 项目页可正常访问
+
+### v0.4.1 - 抓取事务与增量状态机
 - ✅ **全量完整性**：任意分页失败都显式返回失败，禁止部分结果进入 snapshot
 - ✅ **增量状态机**：Forward/Backward 分阶段保存，记录请求、数据页、重试、stop reason 和 partial 状态
 - ✅ **数据契约**：raw schema 严格校验，译文携带原文与配置指纹
@@ -1055,21 +1059,21 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 
 ## 📚 相关文档
 
-- [CONFIG_GUIDE.md](CONFIG_GUIDE.md) - 配置指南：多用户分析配置
-- [QUICK_START.md](QUICK_START.md) - 快速开始指南
-- [FETCH_MORE_DATA.md](FETCH_MORE_DATA.md) - 增量抓取说明
-- [BEHAVIOR_ANALYSIS.md](BEHAVIOR_ANALYSIS.md) - 行为分析功能说明
-- [CHANGELOG.md](CHANGELOG.md) - 版本更新日志
-- [CONTRIBUTING.md](CONTRIBUTING.md) - 贡献指南：开发环境、PR 流程、测试要求
-- [SECURITY.md](SECURITY.md) - 安全与隐私报告说明
-- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) - 发布前检查清单
-- [ANALYSIS_SUMMARY.md](ANALYSIS_SUMMARY.md) - 完整的用户分析报告示例
+- [CONFIG_GUIDE.md](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md) - 配置指南：多用户分析配置
+- [QUICK_START.md](https://github.com/yuanrengu/xcrawler/blob/main/QUICK_START.md) - 快速开始指南
+- [FETCH_MORE_DATA.md](https://github.com/yuanrengu/xcrawler/blob/main/FETCH_MORE_DATA.md) - 增量抓取说明
+- [BEHAVIOR_ANALYSIS.md](https://github.com/yuanrengu/xcrawler/blob/main/BEHAVIOR_ANALYSIS.md) - 行为分析功能说明
+- [CHANGELOG.md](https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md) - 版本更新日志
+- [CONTRIBUTING.md](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md) - 贡献指南：开发环境、PR 流程、测试要求
+- [SECURITY.md](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md) - 安全与隐私报告说明
+- [RELEASE_CHECKLIST.md](https://github.com/yuanrengu/xcrawler/blob/main/RELEASE_CHECKLIST.md) - 发布前检查清单
+- [ANALYSIS_SUMMARY.md](https://github.com/yuanrengu/xcrawler/blob/main/ANALYSIS_SUMMARY.md) - 完整的用户分析报告示例
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request。建议先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，其中包含开发环境、测试命令、PR 描述和隐私默认值要求。
+欢迎提交 Issue 和 Pull Request。建议先阅读 [CONTRIBUTING.md](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md)，其中包含开发环境、测试命令、PR 描述和隐私默认值要求。
 
-如果你发现密钥泄露、缓存数据暴露、敏感事件未脱敏等安全或隐私问题，请参考 [SECURITY.md](SECURITY.md) 私下报告，不要直接公开可利用细节。
+如果你发现密钥泄露、缓存数据暴露、敏感事件未脱敏等安全或隐私问题，请参考 [SECURITY.md](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md) 私下报告，不要直接公开可利用细节。
 
 ## 🔐 Privacy / Responsible Use
 

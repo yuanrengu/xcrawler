@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xcrawler-ai"
-version = "0.4.1"
+version = "0.4.2"
 description = "X/Twitter user profile analysis toolkit for fetching, translating, analyzing, and reporting public posts."
 readme = "README.md"
 requires-python = ">=3.10"
