@@ -23,9 +23,9 @@
 - [ ] 更新 `pyproject.toml` 中的版本号。
 - [ ] `xcrawler/__init__.py` 与 `pyproject.toml` 版本号一致。
 - [ ] `CHANGELOG.md` 将待发布内容从 `Unreleased` 移入当前版本和日期。
-- [ ] 创建并验证签名或 annotated Git tag，例如 `v0.4.1`。
+- [ ] 创建并验证签名或 annotated Git tag，例如 `v0.4.2`。
 - [ ] 在 README 更新对应版本的变更摘要。
-- [ ] 创建 GitHub Release，标题使用版本号，例如 `v0.4.1`。
+- [ ] 创建 GitHub Release，标题使用版本号，例如 `v0.4.2`。
 - [ ] Release notes 包含：新增能力、兼容性说明、迁移提示、已知限制。
 
 ## 发布后

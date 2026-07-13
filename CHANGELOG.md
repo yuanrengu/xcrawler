@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-13
+
+### Fixed
+- Use an absolute HTTPS URL for the README preview image so it renders on both GitHub and PyPI
+- Convert README language, license, configuration, contribution, security, and release-document links to absolute GitHub URLs for PyPI compatibility
+- Update the English quick-start installation commands to use the published `xcrawler-ai` distribution
+
 ## [0.4.1] - 2026-07-12
 
 ### Fixed
