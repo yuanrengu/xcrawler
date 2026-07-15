@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Split the monolithic test suite by responsibility and enforce independent coverage floors for full fetch, incremental fetch, and X API pagination code
+- Add a full-fetch transaction matrix plus property-based timeline response contract tests
+
 ### Fixed
 - Treat a full-fetch page limit with a remaining `next_token` as partial instead of a complete snapshot
 - Reject HTTP 200 X API responses containing errors, malformed pagination metadata, or repeated pagination tokens
