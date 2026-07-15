@@ -178,7 +178,7 @@ xcrawler translate
 ./refetch_data.sh                  # 全量重新抓取
 ```
 
-`fetch-more --pages` 表示 Forward、Backward 和重试共享的 HTTP 请求预算，不是成功数据页数。最近一次的请求数、数据页、重试数、stop reason 和 partial 状态会写入 `{username}_fetch_status.json`。Forward/Backward 各自成功后立即原子合并保存，后一阶段失败不会丢失前一阶段成果。
+`fetch-more --pages` 表示 Forward、Backward 和重试共享的 HTTP 请求预算，不是成功数据页数。最近一次的请求数、数据页、重试数、stop reason、`complete`、`has_more` 和各阶段完成状态会写入 `{username}_fetch_status.json`。Forward/Backward 各自成功后立即原子合并保存，后一阶段失败不会丢失前一阶段成果。退出码统一为：完整成功 `0`、失败 `1`、已安全保存但同步范围不完整 `2`；自动化任务不应把退出码 `2` 当作完整成功。
 
 #### 方案 C：仅分析现有数据
 

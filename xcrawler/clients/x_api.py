@@ -18,6 +18,16 @@ class TweetFetchError(RuntimeError):
     """用户时间线未能完整抓取，返回的部分数据不应当作完整结果。"""
 
 
+class TimelinePageError(ValueError):
+    """X API 时间线页面不满足可安全分页的数据契约。"""
+
+
+@dataclass(frozen=True)
+class TimelinePageResult:
+    tweets: list[dict]
+    next_token: str | None
+
+
 @dataclass(frozen=True)
 class TweetFetchResult:
     tweets: list[dict]
@@ -27,6 +37,38 @@ class TweetFetchResult:
     requests_used: int
     retries: int
     next_token: str | None = None
+
+
+def validate_timeline_page_response(data: dict, *, page_number: int) -> TimelinePageResult:
+    errors = data.get("errors")
+    if errors is not None:
+        if not isinstance(errors, list):
+            raise TimelinePageError(f"第 {page_number} 页 errors 数据结构无效")
+        if errors:
+            raise TimelinePageError(f"第 {page_number} 页响应包含 API errors，无法确认抓取完整")
+
+    meta = data.get("meta", {})
+    if not isinstance(meta, dict):
+        raise TimelinePageError(f"第 {page_number} 页 meta 数据结构无效")
+
+    token = meta.get("next_token")
+    if token is not None and (not isinstance(token, str) or not token.strip()):
+        raise TimelinePageError(f"第 {page_number} 页 next_token 数据结构无效")
+
+    if "data" not in data:
+        if meta.get("result_count") == 0 and token is None:
+            page_tweets = []
+        else:
+            raise TimelinePageError(f"第 {page_number} 页响应缺少 data，无法确认抓取完整")
+    else:
+        page_tweets = data["data"]
+        if not isinstance(page_tweets, list):
+            raise TimelinePageError(f"第 {page_number} 页 data 数据结构无效")
+
+    if not page_tweets and token is not None:
+        raise TimelinePageError(f"第 {page_number} 页无数据但仍包含 next_token，分页状态不一致")
+
+    return TimelinePageResult(page_tweets, token)
 
 
 def auth_headers(bearer_token: str | None) -> dict[str, str]:
@@ -137,30 +179,13 @@ def fetch_user_tweets_with_status(
         response = attempt_result.response
         data = attempt_result.data
 
-        errors = data.get("errors")
-        if errors is not None:
-            if not isinstance(errors, list):
-                raise TweetFetchError(f"第 {page + 1} 页 errors 数据结构无效")
-            if errors:
-                raise TweetFetchError(f"第 {page + 1} 页响应包含 API errors，无法确认抓取完整")
-
-        meta = data.get("meta", {})
-        if not isinstance(meta, dict):
-            raise TweetFetchError(f"第 {page + 1} 页 meta 数据结构无效")
-
-        if "data" not in data:
-            if meta.get("result_count") == 0 and not meta.get("next_token"):
-                page_tweets = []
-            else:
-                raise TweetFetchError(f"第 {page + 1} 页响应缺少 data，无法确认抓取完整")
-        else:
-            page_tweets = data["data"]
-            if not isinstance(page_tweets, list):
-                raise TweetFetchError(f"第 {page + 1} 页 data 数据结构无效")
+        try:
+            page_result = validate_timeline_page_response(data, page_number=page + 1)
+        except TimelinePageError as error:
+            raise TweetFetchError(str(error)) from error
+        page_tweets = page_result.tweets
 
         if not page_tweets:
-            if meta.get("next_token") is not None:
-                raise TweetFetchError(f"第 {page + 1} 页无数据但仍包含 next_token，分页状态不一致")
             print(f"📭 第 {page + 1} 页无数据，停止抓取")
             return TweetFetchResult(
                 tweets=tweets,
@@ -179,7 +204,7 @@ def fetch_user_tweets_with_status(
         if remaining:
             print(f"   剩余配额: {remaining} 次")
 
-        token = meta.get("next_token")
+        token = page_result.next_token
         if token is None:
             print("✅ 已抓取所有可用推文")
             return TweetFetchResult(
@@ -190,8 +215,6 @@ def fetch_user_tweets_with_status(
                 requests_used=requests_used,
                 retries=retries,
             )
-        if not isinstance(token, str) or not token.strip():
-            raise TweetFetchError(f"第 {page + 1} 页 next_token 数据结构无效")
         if token in seen_tokens:
             raise TweetFetchError(f"第 {page + 1} 页出现重复 next_token，分页无法继续")
         seen_tokens.add(token)

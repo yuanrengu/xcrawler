@@ -487,11 +487,11 @@ class TestFetchMoreHistory:
         fetch_calls = MagicMock(side_effect=[
             fetch_more_history.FetchBatchResult(
                 [{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}],
-                False, 1, 1, 0, "no_next_token",
+                False, 1, 1, 0, "no_next_token", True, False,
             ),
             fetch_more_history.FetchBatchResult(
                 [{"id": "0", "text": "older history", "created_at": "2024-12-31T00:00:00Z"}],
-                False, 1, 1, 0, "no_next_token",
+                False, 1, 1, 0, "no_next_token", True, False,
             ),
         ])
         monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", fetch_calls)
@@ -501,6 +501,12 @@ class TestFetchMoreHistory:
         saved = json.loads(raw_file.read_text(encoding="utf-8"))
         assert [tweet["id"] for tweet in saved] == ["3", "2", "1", "0"]
         assert fetch_calls.call_count == 2
+        status = json.loads((tmp_path / f"{username}_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "success"
+        assert status["complete"] is True
+        assert status["has_more"] is False
+        assert status["forward_complete"] is True
+        assert status["backward_complete"] is True
 
     @patch("fetch_more_history.requests.get")
     def test_stop_date_filters_within_page(self, mock_get):
@@ -533,6 +539,8 @@ class TestFetchMoreHistory:
             assert result.data_pages == 1
             assert result.requests_used == 1
             assert result.stop_reason == "target_date"
+            assert result.complete is True
+            assert result.has_more is False
             assert [tweet["id"] for tweet in result.tweets] == ["2"]
         finally:
             fetch_more_history.REQUEST_INTERVAL = old_interval
@@ -602,6 +610,113 @@ class TestFetchMoreHistory:
         assert result.retries == 1
         mock_sleep.assert_called_once_with(1)
 
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_request_budget_with_next_token_is_partial(self, mock_get, mock_sleep):
+        import fetch_more_history
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "more"},
+        }
+        mock_get.return_value = response
+
+        result = fetch_more_history.fetch_tweets_generic(
+            "user-id", {}, max_pages_limit=10, request_budget=1,
+        )
+
+        assert result.stop_reason == "request_budget"
+        assert result.complete is False
+        assert result.has_more is True
+        assert result.requests_used == 1
+        assert result.data_pages == 1
+        mock_sleep.assert_not_called()
+
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_data_page_limit_with_next_token_is_partial(self, mock_get, mock_sleep):
+        import fetch_more_history
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "more"},
+        }
+        mock_get.return_value = response
+
+        result = fetch_more_history.fetch_tweets_generic(
+            "user-id", {}, max_pages_limit=1, request_budget=3,
+        )
+
+        assert result.stop_reason == "page_limit"
+        assert result.complete is False
+        assert result.has_more is True
+        mock_sleep.assert_not_called()
+
+    @patch("fetch_more_history.requests.get")
+    def test_low_remaining_rate_limit_with_next_token_is_partial(self, mock_get):
+        import fetch_more_history
+
+        response = MagicMock(status_code=200, headers={"x-rate-limit-remaining": "1"})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "more"},
+        }
+        mock_get.return_value = response
+
+        result = fetch_more_history.fetch_tweets_generic(
+            "user-id", {}, max_pages_limit=3, request_budget=3,
+        )
+
+        assert result.stop_reason == "rate_limit_low"
+        assert result.can_continue is False
+        assert result.complete is False
+        assert result.has_more is True
+
+    @patch("fetch_more_history.requests.get")
+    def test_http_200_api_errors_raise_invalid_response(self, mock_get):
+        import fetch_more_history
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {"errors": [{"message": "partial failure"}]}
+        mock_get.return_value = response
+
+        with pytest.raises(fetch_more_history.FetchError, match="API errors") as exc_info:
+            fetch_more_history.fetch_tweets_generic("user-id", {}, max_pages_limit=1)
+
+        assert exc_info.value.stop_reason == "invalid_response"
+        assert exc_info.value.requests_used == 1
+
+    @patch("fetch_more_history.time.sleep")
+    @patch("fetch_more_history.requests.get")
+    def test_repeated_pagination_token_raises(self, mock_get, mock_sleep):
+        import fetch_more_history
+
+        responses = []
+        for tweet_id in ("2", "1"):
+            response = MagicMock(status_code=200, headers={})
+            response.raise_for_status = MagicMock()
+            response.json.return_value = {
+                "data": [{"id": tweet_id, "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+                "meta": {"next_token": "same-token"},
+            }
+            responses.append(response)
+        mock_get.side_effect = responses
+
+        with pytest.raises(fetch_more_history.FetchError, match="重复 next_token") as exc_info:
+            fetch_more_history.fetch_tweets_generic(
+                "user-id", {}, max_pages_limit=2, request_budget=2,
+            )
+
+        assert exc_info.value.stop_reason == "pagination_token_cycle"
+        assert exc_info.value.requests_used == 2
+        mock_sleep.assert_called_once_with(fetch_more_history.REQUEST_INTERVAL)
+
     def test_main_returns_failure_when_incremental_fetch_fails(self, tmp_path, monkeypatch):
         import fetch_more_history
 
@@ -626,6 +741,53 @@ class TestFetchMoreHistory:
 
         assert fetch_more_history.main() == 1
 
+    def test_user_lookup_failure_replaces_stale_status(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        status_path = tmp_path / "alice_fetch_status.json"
+        status_path.write_text('{"status":"success","complete":true}', encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(
+            fetch_more_history,
+            "get_user_id",
+            MagicMock(side_effect=RuntimeError("lookup failed")),
+        )
+
+        assert fetch_more_history.main() == 1
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+        assert status["status"] == "failed"
+        assert status["complete"] is False
+        assert status["error_stop_reason"] == "user_lookup_failed"
+
+    def test_invalid_target_date_is_recorded_as_failed(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date="2026-99-99", interval=0, cache_dir=str(tmp_path),
+        ))
+
+        assert fetch_more_history.main() == 1
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "failed"
+        assert status["error_stop_reason"] == "invalid_target_date"
+
+    def test_invalid_existing_data_is_recorded_as_failed(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        (tmp_path / "alice_raw_tweets.json").write_text("{broken", encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+
+        assert fetch_more_history.main() == 1
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "failed"
+        assert status["error_stop_reason"] == "invalid_existing_data"
+
     def test_backward_failure_keeps_forward_data_and_records_partial(self, tmp_path, monkeypatch):
         import fetch_more_history
 
@@ -643,7 +805,7 @@ class TestFetchMoreHistory:
         monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", MagicMock(side_effect=[
             fetch_more_history.FetchBatchResult(
                 [{"id": "3", "text": "new tweet", "created_at": "2025-01-03T00:00:00Z"}],
-                False, 1, 1, 0, "no_next_token",
+                False, 1, 1, 0, "no_next_token", True, False,
             ),
             fetch_more_history.FetchError("backward failed"),
         ]))
@@ -652,8 +814,32 @@ class TestFetchMoreHistory:
         assert [item["id"] for item in json.loads(raw_file.read_text(encoding="utf-8"))] == ["3", "2", "1"]
         status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
         assert status["status"] == "partial"
+        assert status["complete"] is False
+        assert status["has_more"] is None
+        assert status["forward_complete"] is True
+        assert status["backward_complete"] is None
         assert status["forward"]["requests_used"] == 1
         assert status["error"] == "backward failed"
+
+    def test_first_fetch_backward_failure_is_failed_not_partial(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(
+            fetch_more_history,
+            "fetch_tweets_generic",
+            MagicMock(side_effect=fetch_more_history.FetchError("initial fetch failed")),
+        )
+
+        assert fetch_more_history.main() == 1
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "failed"
+        assert status["complete"] is False
+        assert status["has_more"] is None
 
     def test_low_rate_limit_stops_before_backward_phase(self, tmp_path, monkeypatch):
         import fetch_more_history
@@ -669,15 +855,60 @@ class TestFetchMoreHistory:
         monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
         monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
         fetch = MagicMock(return_value=fetch_more_history.FetchBatchResult(
-            [], False, 1, 1, 0, "rate_limit_low", can_continue=False,
+            [], False, 1, 1, 0, "rate_limit_low", False, True, can_continue=False,
         ))
         monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", fetch)
 
-        assert fetch_more_history.main() == 0
+        assert fetch_more_history.main() == 2
         assert fetch.call_count == 1
         status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
         assert status["status"] == "partial"
+        assert status["complete"] is False
+        assert status["has_more"] is True
+        assert status["forward_complete"] is False
         assert status["forward"]["stop_reason"] == "rate_limit_low"
+
+    def test_history_skipped_after_forward_uses_partial_exit(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        raw_file = tmp_path / "alice_raw_tweets.json"
+        raw_file.write_text(json.dumps([
+            {"id": "1", "text": "existing tweet", "created_at": "2025-01-01T00:00:00Z"},
+        ]), encoding="utf-8")
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(fetch_more_history, "auth_headers", lambda token: {})
+        monkeypatch.setattr(fetch_more_history, "get_user_id", lambda user, headers: "user-id")
+        monkeypatch.setattr(fetch_more_history, "TARGET_DATE", datetime(2024, 1, 1))
+        monkeypatch.setattr(fetch_more_history, "fetch_tweets_generic", MagicMock(return_value=
+            fetch_more_history.FetchBatchResult([], False, 0, 1, 0, "no_data", True, False)
+        ))
+
+        assert fetch_more_history.main() == 2
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "partial"
+        assert status["complete"] is False
+        assert status["has_more"] is True
+        assert status["forward_complete"] is True
+        assert status["backward_complete"] is None
+
+    def test_missing_secret_is_recorded_as_failed(self, tmp_path, monkeypatch):
+        import fetch_more_history
+
+        monkeypatch.setattr(fetch_more_history, "parse_args", lambda: SimpleNamespace(
+            user="alice", pages=1, target_date=None, interval=0, cache_dir=str(tmp_path),
+        ))
+        monkeypatch.setattr(
+            fetch_more_history,
+            "auth_headers",
+            MagicMock(side_effect=RuntimeError("missing X_BEARER_TOKEN")),
+        )
+
+        assert fetch_more_history.main() == 1
+        status = json.loads((tmp_path / "alice_fetch_status.json").read_text(encoding="utf-8"))
+        assert status["status"] == "failed"
+        assert status["error_stop_reason"] == "missing_secret"
 
 
 # ==============================
