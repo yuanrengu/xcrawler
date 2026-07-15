@@ -69,10 +69,12 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -e ".[test]"
       - name: Enforce coverage floor
-        run: >-
-          python -m pytest
-          --cov=xcrawler
-          --cov=main
-          --cov=fetch_more_history
-          --cov-report=term-missing
-          --cov-fail-under=80
+        run: |
+          python -m pytest \
+            --cov=xcrawler \
+            --cov=main \
+            --cov=fetch_more_history \
+            --cov-report=term-missing \
+            --cov-report=json:coverage.json \
+            --cov-fail-under=80
+          python scripts/check_critical_coverage.py coverage.json
