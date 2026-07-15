@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import requests
 
@@ -15,6 +16,17 @@ MAX_RATE_LIMIT_WAIT = 60
 
 class TweetFetchError(RuntimeError):
     """用户时间线未能完整抓取，返回的部分数据不应当作完整结果。"""
+
+
+@dataclass(frozen=True)
+class TweetFetchResult:
+    tweets: list[dict]
+    complete: bool
+    stop_reason: str
+    data_pages: int
+    requests_used: int
+    retries: int
+    next_token: str | None = None
 
 
 def auth_headers(bearer_token: str | None) -> dict[str, str]:
@@ -83,13 +95,16 @@ def get_user_profile(
         return None
 
 
-def fetch_user_tweets(
+def fetch_user_tweets_with_status(
     user_id: str,
     headers: dict[str, str],
     max_pages: int,
     request_get: RequestGet = requests.get,
     max_retries: int = MAX_FETCH_RETRIES,
-) -> list[dict]:
+) -> TweetFetchResult:
+    if max_pages < 1:
+        raise ValueError("max_pages 必须大于等于 1")
+
     url = f"https://api.twitter.com/2/users/{user_id}/tweets"
     params = {
         "max_results": 100,
@@ -98,6 +113,11 @@ def fetch_user_tweets(
     }
 
     tweets = []
+    data_pages = 0
+    requests_used = 0
+    retries = 0
+    seen_tokens: set[str] = set()
+    next_token: str | None = None
     for page in range(max_pages):
         try:
             attempt_result = request_json_with_retries(
@@ -112,26 +132,102 @@ def fetch_user_tweets(
             )
         except RequestAttemptsError as error:
             raise TweetFetchError(str(error)) from error
+        requests_used += attempt_result.requests_used
+        retries += attempt_result.retries
         response = attempt_result.response
         data = attempt_result.data
 
-        page_tweets = data.get("data", [])
+        errors = data.get("errors")
+        if errors is not None:
+            if not isinstance(errors, list):
+                raise TweetFetchError(f"第 {page + 1} 页 errors 数据结构无效")
+            if errors:
+                raise TweetFetchError(f"第 {page + 1} 页响应包含 API errors，无法确认抓取完整")
+
+        meta = data.get("meta", {})
+        if not isinstance(meta, dict):
+            raise TweetFetchError(f"第 {page + 1} 页 meta 数据结构无效")
+
+        if "data" not in data:
+            if meta.get("result_count") == 0 and not meta.get("next_token"):
+                page_tweets = []
+            else:
+                raise TweetFetchError(f"第 {page + 1} 页响应缺少 data，无法确认抓取完整")
+        else:
+            page_tweets = data["data"]
+            if not isinstance(page_tweets, list):
+                raise TweetFetchError(f"第 {page + 1} 页 data 数据结构无效")
+
         if not page_tweets:
+            if meta.get("next_token") is not None:
+                raise TweetFetchError(f"第 {page + 1} 页无数据但仍包含 next_token，分页状态不一致")
             print(f"📭 第 {page + 1} 页无数据，停止抓取")
-            break
+            return TweetFetchResult(
+                tweets=tweets,
+                complete=True,
+                stop_reason="no_data",
+                data_pages=data_pages,
+                requests_used=requests_used,
+                retries=retries,
+            )
 
         tweets.extend(page_tweets)
+        data_pages += 1
         print(f"📄 已抓取第 {page + 1} 页，本页 {len(page_tweets)} 条，累计 {len(tweets)} 条")
 
         remaining = response.headers.get("x-rate-limit-remaining")
         if remaining:
             print(f"   剩余配额: {remaining} 次")
 
-        token = data.get("meta", {}).get("next_token")
-        if not token:
+        token = meta.get("next_token")
+        if token is None:
             print("✅ 已抓取所有可用推文")
-            break
+            return TweetFetchResult(
+                tweets=tweets,
+                complete=True,
+                stop_reason="no_next_token",
+                data_pages=data_pages,
+                requests_used=requests_used,
+                retries=retries,
+            )
+        if not isinstance(token, str) or not token.strip():
+            raise TweetFetchError(f"第 {page + 1} 页 next_token 数据结构无效")
+        if token in seen_tokens:
+            raise TweetFetchError(f"第 {page + 1} 页出现重复 next_token，分页无法继续")
+        seen_tokens.add(token)
+        next_token = token
         params["pagination_token"] = token
-        time.sleep(1)
+        if page + 1 < max_pages:
+            time.sleep(1)
 
-    return tweets
+    return TweetFetchResult(
+        tweets=tweets,
+        complete=False,
+        stop_reason="page_limit",
+        data_pages=data_pages,
+        requests_used=requests_used,
+        retries=retries,
+        next_token=next_token,
+    )
+
+
+def fetch_user_tweets(
+    user_id: str,
+    headers: dict[str, str],
+    max_pages: int,
+    request_get: RequestGet = requests.get,
+    max_retries: int = MAX_FETCH_RETRIES,
+) -> list[dict]:
+    """兼容旧调用方的列表返回值，但绝不把页数截断结果伪装成完整列表。"""
+    result = fetch_user_tweets_with_status(
+        user_id,
+        headers,
+        max_pages,
+        request_get=request_get,
+        max_retries=max_retries,
+    )
+    if not result.complete:
+        raise TweetFetchError(
+            f"抓取达到 {max_pages} 页上限但仍有下一页；请提高页数，或使用带状态的抓取接口"
+        )
+    return result.tweets

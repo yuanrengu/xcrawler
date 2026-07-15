@@ -968,6 +968,106 @@ class TestFullFetchFailures:
         assert request_get.call_count == 3
         assert mock_sleep.call_args_list[-1].args == (1,)
 
+    @patch("xcrawler.clients.x_api.time.sleep")
+    def test_page_limit_with_next_token_returns_partial_result(self, mock_sleep):
+        from xcrawler.clients.x_api import fetch_user_tweets_with_status
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "still-more"},
+        }
+
+        result = fetch_user_tweets_with_status("user-id", {}, 1, request_get=MagicMock(return_value=response))
+
+        assert [tweet["id"] for tweet in result.tweets] == ["1"]
+        assert result.complete is False
+        assert result.stop_reason == "page_limit"
+        assert result.next_token == "still-more"
+        assert result.data_pages == 1
+        assert result.requests_used == 1
+        mock_sleep.assert_not_called()
+
+    def test_legacy_list_api_rejects_page_limit_partial(self):
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "still-more"},
+        }
+
+        with pytest.raises(TweetFetchError, match="仍有下一页"):
+            fetch_user_tweets("user-id", {}, 1, request_get=MagicMock(return_value=response))
+
+    @patch("xcrawler.clients.x_api.time.sleep")
+    def test_http_200_errors_on_later_page_raise(self, mock_sleep):
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        first = MagicMock(status_code=200, headers={})
+        first.raise_for_status = MagicMock()
+        first.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": {"next_token": "next"},
+        }
+        second = MagicMock(status_code=200, headers={})
+        second.raise_for_status = MagicMock()
+        second.json.return_value = {"errors": [{"message": "partial failure"}]}
+        request_get = MagicMock(side_effect=[first, second])
+
+        with pytest.raises(TweetFetchError, match="API errors"):
+            fetch_user_tweets("user-id", {}, 2, request_get=request_get)
+
+        assert request_get.call_count == 2
+        mock_sleep.assert_called_once_with(1)
+
+    def test_malformed_meta_raises(self):
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [{"id": "1", "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+            "meta": [],
+        }
+
+        with pytest.raises(TweetFetchError, match="meta 数据结构无效"):
+            fetch_user_tweets("user-id", {}, 1, request_get=MagicMock(return_value=response))
+
+    def test_empty_data_with_next_token_raises(self):
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        response = MagicMock(status_code=200, headers={})
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {
+            "data": [],
+            "meta": {"result_count": 0, "next_token": "inconsistent"},
+        }
+
+        with pytest.raises(TweetFetchError, match="分页状态不一致"):
+            fetch_user_tweets("user-id", {}, 1, request_get=MagicMock(return_value=response))
+
+    @patch("xcrawler.clients.x_api.time.sleep")
+    def test_repeated_next_token_raises(self, mock_sleep):
+        from xcrawler.clients.x_api import TweetFetchError, fetch_user_tweets
+
+        responses = []
+        for tweet_id in ("1", "2"):
+            response = MagicMock(status_code=200, headers={})
+            response.raise_for_status = MagicMock()
+            response.json.return_value = {
+                "data": [{"id": tweet_id, "text": "tweet", "created_at": "2026-01-01T00:00:00Z"}],
+                "meta": {"next_token": "same-token"},
+            }
+            responses.append(response)
+
+        with pytest.raises(TweetFetchError, match="重复 next_token"):
+            fetch_user_tweets("user-id", {}, 2, request_get=MagicMock(side_effect=responses))
+
+        mock_sleep.assert_called_once_with(1)
+
     def test_replace_translation_failure_preserves_previous_snapshot(self, tmp_path, monkeypatch):
         import main
 
@@ -1005,7 +1105,9 @@ class TestFullFetchFailures:
         monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
         monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
         monkeypatch.setattr(main, "get_user_profile", lambda username: None)
-        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: new_raw)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: main.x_api.TweetFetchResult(
+            new_raw, True, "no_next_token", 1, 1, 0,
+        ))
         monkeypatch.setattr(main, "deepseek_translate_batch", lambda texts, langs: [None] * len(texts))
         monkeypatch.setattr(main, "save_translation_cache", lambda cache: None)
 
@@ -1029,7 +1131,9 @@ class TestFullFetchFailures:
         monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
         monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
         monkeypatch.setattr(main, "get_user_profile", lambda username: None)
-        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: raw)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: main.x_api.TweetFetchResult(
+            raw, True, "no_next_token", 1, 1, 0,
+        ))
         monkeypatch.setattr(main, "deepseek_translate_batch", lambda texts, langs: ["新译文"])
         monkeypatch.setattr(main, "save_translation_cache", lambda cache: None)
 
@@ -1065,12 +1169,71 @@ class TestFullFetchFailures:
         monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
         monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
         monkeypatch.setattr(main, "get_user_profile", lambda username: None)
-        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: new_raw)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: main.x_api.TweetFetchResult(
+            new_raw, True, "no_next_token", 1, 1, 0,
+        ))
 
         assert main.main() == 0
         assert json.loads(raw_path.read_text(encoding="utf-8")) == new_raw
         retained = json.loads(translated_path.read_text(encoding="utf-8"))
         assert [item["tweet_id"] for item in retained] == ["keep"]
+
+    def test_replace_page_limit_preserves_previous_snapshot(self, tmp_path, monkeypatch):
+        import main
+
+        old_raw = [{"id": "old", "text": "old tweet", "created_at": "2025-01-01T00:00:00Z"}]
+        old_translated = [{
+            "tweet_id": "old",
+            "original": "old tweet",
+            "translated": "旧译文",
+            "detected_language": "en",
+            "created_at": "2025-01-01T00:00:00Z",
+        }]
+        new_raw = [{"id": "new", "text": "new tweet", "created_at": "2026-01-01T00:00:00Z"}]
+        raw_path = tmp_path / "alice_raw_tweets.json"
+        translated_path = tmp_path / "alice_translated.json"
+        raw_path.write_text(json.dumps(old_raw), encoding="utf-8")
+        translated_path.write_text(json.dumps(old_translated, ensure_ascii=False), encoding="utf-8")
+        args = SimpleNamespace(
+            user="alice", pages=1, batch_size=10, model=None, cache_dir=str(tmp_path),
+            analysis_limit=100, no_translate=False, replace=True, storage_backend="json", sqlite_path=None,
+        )
+        monkeypatch.setattr(main, "parse_args", lambda: args)
+        monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+        monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+        monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: main.x_api.TweetFetchResult(
+            new_raw, False, "page_limit", 1, 1, 0, "still-more",
+        ))
+        translate = MagicMock()
+        monkeypatch.setattr(main, "deepseek_translate_batch", translate)
+
+        assert main.main() == 2
+        assert json.loads(raw_path.read_text(encoding="utf-8")) == old_raw
+        assert json.loads(translated_path.read_text(encoding="utf-8")) == old_translated
+        translate.assert_not_called()
+
+    def test_archive_page_limit_saves_partial_data_and_returns_two(self, tmp_path, monkeypatch):
+        import main
+
+        old_raw = [{"id": "old", "text": "old tweet", "created_at": "2025-01-01T00:00:00Z"}]
+        new_raw = [{"id": "new", "text": "new tweet", "created_at": "2026-01-01T00:00:00Z"}]
+        raw_path = tmp_path / "alice_raw_tweets.json"
+        raw_path.write_text(json.dumps(old_raw), encoding="utf-8")
+        args = SimpleNamespace(
+            user="alice", pages=1, batch_size=10, model=None, cache_dir=str(tmp_path),
+            analysis_limit=100, no_translate=True, replace=False, storage_backend="json", sqlite_path=None,
+        )
+        monkeypatch.setattr(main, "parse_args", lambda: args)
+        monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+        monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+        monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+        monkeypatch.setattr(main, "fetch_tweets", lambda user_id: main.x_api.TweetFetchResult(
+            new_raw, False, "page_limit", 1, 1, 0, "still-more",
+        ))
+
+        assert main.main() == 2
+        assert [tweet["id"] for tweet in json.loads(raw_path.read_text(encoding="utf-8"))] == ["new", "old"]
 
 
 # ==============================

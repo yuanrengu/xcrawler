@@ -162,7 +162,7 @@ xcrawler analyze interest
 xcrawler analyze behavior
 ```
 
-`xcrawler fetch` 默认为 **archive 模式**：按 tweet ID 合并并保留本地历史，远端已删除推文不会自动从本地删除。`xcrawler fetch --replace` 为 **snapshot 模式**：仅在全量分页完整且翻译全部成功后，同时替换 raw/translated 快照。
+`xcrawler fetch` 默认为 **archive 模式**：按 tweet ID 合并并保留本地历史，远端已删除推文不会自动从本地删除。`xcrawler fetch --replace` 为 **snapshot 模式**：仅在全量分页明确结束（响应不再包含 `next_token`）且翻译全部成功后，同时替换 raw/translated 快照。若达到 `--pages` 上限时仍有下一页，archive 模式会保存已抓取数据并返回 partial（退出码 2），snapshot 模式拒绝覆盖现有快照。
 
 #### 方案 B：增量抓取（推荐 Free API）
 

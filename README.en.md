@@ -49,7 +49,7 @@ Base installation supports fetching, translation, export, and the no-key demo. I
 ## Data safety
 
 - Default full fetches use **archive mode**: fetched records are merged by tweet ID and locally retained history is not deleted when a post disappears remotely.
-- `xcrawler fetch --replace` uses **snapshot mode**: a completely fetched result replaces local history. Replacement commits raw and translated files together only after every requested translation succeeds.
+- `xcrawler fetch --replace` uses **snapshot mode**: a result replaces local history only after pagination explicitly ends without another `next_token`. If `--pages` is reached while another page exists, archive mode safely saves the partial data and exits with status 2, while snapshot mode refuses to replace existing raw or translated files.
 - A partially completed fetch or translation returns a non-zero exit status; successfully saved partial translations are reported explicitly.
 - `fetch-more --pages` is a shared HTTP request budget for forward fetching, backward fetching, and retries. The latest incremental status is written to `{username}_fetch_status.json` with request, data-page, retry, stop-reason, and partial-state fields.
 - Translation records include source-content and translation-configuration fingerprints so changed source text is retranslated instead of being skipped solely because its tweet ID already exists.

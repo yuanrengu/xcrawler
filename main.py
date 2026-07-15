@@ -210,9 +210,9 @@ def get_user_profile(username: str) -> dict | None:
         print(f"⚠️ 获取用户信息失败: {str(e)}")
         return None
 
-def fetch_tweets(user_id: str) -> list[dict]:
+def fetch_tweets(user_id: str) -> x_api.TweetFetchResult:
     """抓取推文，带错误处理和进度显示"""
-    return x_api.fetch_user_tweets(user_id, HEADERS, MAX_PAGES, request_get=requests.get)
+    return x_api.fetch_user_tweets_with_status(user_id, HEADERS, MAX_PAGES, request_get=requests.get)
 
 
 def print_execution_plan(*, max_pages: int, batch_size: int, no_translate: bool, cache_size: int, analysis_limit: int) -> None:
@@ -309,13 +309,24 @@ def main():
 
         # 2. 抓取推文
         print("📥 抓取推文（已排除转发和回复）...")
-        raw_tweets = fetch_tweets(user_id)
+        fetch_result = fetch_tweets(user_id)
+        raw_tweets = fetch_result.tweets
         raw_tweets = validate_raw_tweets(raw_tweets, source="X API full fetch")
         print(f"📊 共抓取 {len(raw_tweets)} 条原创推文\n")
         
         if len(raw_tweets) == 0:
             print("❌ 没有抓取到任何推文，请检查用户是否存在或是否有权限")
             return 1
+
+        fetch_partial = not fetch_result.complete
+        if fetch_partial:
+            print(
+                f"⚠️ 全量抓取在 {fetch_result.stop_reason} 边界停止，"
+                f"仍有下一页，当前结果仅包含 {fetch_result.data_pages} 个数据页。"
+            )
+            if args.replace:
+                print("❌ --replace 仅接受完整快照，原 raw/translated 文件均未覆盖。")
+                return 2
         
         # 保存原始推文：默认保留历史，只有 --replace 显式覆盖。
         raw_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_raw_tweets.json")
@@ -347,7 +358,7 @@ def main():
                     save_json(raw_file, raw_tweets)
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
             print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
-            return 0
+            return 2 if fetch_partial else 0
 
         print("🧹 清洗 + 智能批量翻译...")
         translated = []
@@ -461,6 +472,10 @@ def main():
         if failed_list:
             print(f"❌ 翻译未完整：{len(failed_list)} 条失败，已保存成功结果并返回失败状态。")
             return 1
+
+        if fetch_partial:
+            print("⚠️ 已安全保存本次部分抓取及译文；因时间线尚未完整，跳过聚类和画像并返回 partial 状态。")
+            return 2
 
         if len(translated) < 10:
             print("⚠️ 可用推文过少（< 10条），无法进行有效分析")

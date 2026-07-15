@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Treat a full-fetch page limit with a remaining `next_token` as partial instead of a complete snapshot
+- Reject HTTP 200 X API responses containing errors, malformed pagination metadata, or repeated pagination tokens
+- Prevent partial full-fetch results from entering `--replace`; archive mode may save them but exits with status 2
+
 ## [0.4.2] - 2026-07-13
 
 ### Fixed
