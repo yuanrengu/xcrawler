@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Treat a full-fetch page limit with a remaining `next_token` as partial instead of a complete snapshot
 - Reject HTTP 200 X API responses containing errors, malformed pagination metadata, or repeated pagination tokens
 - Prevent partial full-fetch results from entering `--replace`; archive mode may save them but exits with status 2
+- Make incremental fetch exit statuses explicit: complete success is 0, failure is 1, and safely persisted partial progress is 2
+- Reuse the full-fetch timeline response contract for incremental HTTP 200 errors, malformed metadata, and pagination-token cycles
+- Record incremental `complete`, `has_more`, and per-phase completion fields without losing successfully persisted earlier phases
 
 ## [0.4.2] - 2026-07-13
 
