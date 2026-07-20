@@ -5,9 +5,9 @@
 ## 发布前
 
 - [ ] `main` 分支已合并目标版本的全部 PR。
-- [ ] `ruff check .` 和 `pytest -ra` 本地通过。
+- [ ] `ruff check .`、`mypy xcrawler` 和 `pytest -ra` 本地通过。
 - [ ] GitHub Actions 通过。
-- [ ] `python -m pip install -e ".[test]"` 可正常安装。
+- [ ] `python -m pip install -e ".[dev]"` 可正常安装。
 - [ ] `xcrawler --help` 可正常显示。
 - [ ] `python3 -m build` 成功生成 wheel 和 sdist。
 - [ ] `python3 -m twine check dist/*` 通过。

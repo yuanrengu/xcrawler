@@ -915,3 +915,13 @@ class TestXApiClient:
 
         assert get_user_id("testuser", {"Authorization": "Bearer token"}, request_get=mock_get) == "123"
         mock_get.assert_called_once()
+
+    def test_get_user_id_rejects_invalid_id_shape(self):
+        from xcrawler.clients.x_api import get_user_id
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": {"id": 123}}
+        mock_response.raise_for_status = MagicMock()
+
+        with pytest.raises(ValueError, match="ID 数据无效"):
+            get_user_id("testuser", {}, request_get=MagicMock(return_value=mock_response))

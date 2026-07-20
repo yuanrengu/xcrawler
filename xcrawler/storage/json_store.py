@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -8,6 +9,8 @@ import warnings
 from typing import Any
 
 from xcrawler.storage.base import Storage
+
+logger = logging.getLogger(__name__)
 
 
 class JsonStoreError(RuntimeError):
@@ -44,7 +47,9 @@ def _atomic_copy(source: str, destination: str) -> None:
 
 def load_json(path: str, default: Any = None) -> Any:
     if not os.path.exists(path):
+        logger.debug("JSON load miss path=%s", path)
         return default
+    logger.debug("JSON load path=%s", path)
     try:
         return _read_json(path)
     except (json.JSONDecodeError, UnicodeDecodeError) as primary_error:
@@ -65,6 +70,7 @@ def load_json(path: str, default: Any = None) -> Any:
 def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = True) -> None:
     parent = os.path.dirname(path) or "."
     os.makedirs(parent, exist_ok=True)
+    logger.debug("JSON save path=%s create_backup=%s", path, create_backup)
 
     # Serialize to a temporary file before touching the current good version.
     temp_path: str | None = None
@@ -100,6 +106,7 @@ def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = Tr
 
 def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -> None:
     """先完整序列化所有文件，再统一替换；任一替换失败时回滚已替换文件。"""
+    logger.debug("JSON transaction begin files=%s", list(updates))
     pending: dict[str, str] = {}
     rollback: dict[str, str | None] = {}
     replaced: list[str] = []
@@ -143,7 +150,9 @@ def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -
             os.replace(temp_path, path)
             pending[path] = ""
             replaced.append(path)
+        logger.debug("JSON transaction committed files=%s", replaced)
     except Exception:
+        logger.debug("JSON transaction rollback files=%s", replaced, exc_info=True)
         for path in reversed(replaced):
             backup_path = rollback.get(path)
             if backup_path:

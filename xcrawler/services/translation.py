@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.translation_cache import (
@@ -14,7 +14,7 @@ from xcrawler.services.translation_cache import (
 )
 from xcrawler.utils.text import detect_language
 
-ClientFactory = Callable[[], object]
+ClientFactory = Callable[[], Any]
 TranslationMetrics = dict[str, int | str]
 
 
@@ -153,7 +153,7 @@ def translate_text(
                 temperature=0.1,
             )
             _record_usage(metrics, response)
-            result = response.choices[0].message.content.strip()
+            result = cast(str, response.choices[0].message.content.strip())
             if call_recorder and started:
                 call_recorder.record_success(
                     operation=operation,
@@ -213,12 +213,12 @@ def translate_batch(
     should_cache_results = use_cache if cache_results is None else cache_results
 
     n = len(texts)
-    langs = [None] * n if detected_langs is None else list(detected_langs)
+    langs: list[str | None] = [None] * n if detected_langs is None else list(detected_langs)
     results: list[str | None] = [None] * n
 
-    to_translate_indices = []
-    to_translate_texts = []
-    to_translate_langs = []
+    to_translate_indices: list[int] = []
+    to_translate_texts: list[str] = []
+    to_translate_langs: list[str] = []
 
     for i, text in enumerate(texts):
         lang = langs[i]

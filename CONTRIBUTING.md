@@ -10,7 +10,7 @@
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e ".[test]"
+python -m pip install -e ".[dev]"
 ```
 
 复制配置模板并填入自己的密钥：
@@ -39,7 +39,9 @@ xcrawler analyze behavior --user MiracleHe
 # 生成报告
 xcrawler report --user MiracleHe
 
-# 运行测试
+# 运行质量检查和测试
+ruff check .
+mypy xcrawler
 pytest -q
 ```
 
@@ -67,11 +69,12 @@ pytest -q
 pytest -q
 ```
 
-如果修改了安装、依赖或 CLI 入口，也建议额外验证：
+如果修改了安装、依赖或 CLI 入口，也应额外验证：
 
 ```bash
-python -m pip install -e ".[test]"
+python -m pip install -e ".[dev]"
 xcrawler --help
+python -m build
 ```
 
 ## 负责任使用

@@ -94,7 +94,11 @@ def get_user_id(username: str, headers: dict[str, str], request_get: RequestGet 
     if "data" not in data:
         raise ValueError(f"用户 '{username}' 不存在或无权访问")
 
-    return data["data"]["id"]
+    user = data["data"]
+    user_id = user.get("id") if isinstance(user, dict) else None
+    if not isinstance(user_id, str) or not user_id:
+        raise ValueError(f"用户 '{username}' 的 ID 数据无效")
+    return user_id
 
 
 def get_user_profile(
@@ -154,7 +158,7 @@ def fetch_user_tweets_with_status(
         "exclude": "retweets,replies",
     }
 
-    tweets = []
+    tweets: list[dict] = []
     data_pages = 0
     requests_used = 0
     retries = 0

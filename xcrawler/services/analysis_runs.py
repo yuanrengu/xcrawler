@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from xcrawler.models import AnalysisRun
@@ -92,4 +92,4 @@ def record_failed_analysis_run(store: Storage, run: AnalysisRun, error: BaseExce
 
 
 def load_analysis_runs(store: Storage) -> list[dict[str, Any]]:
-    return store.load_json(ANALYSIS_RUNS_KEY, default=[])
+    return cast(list[dict[str, Any]], store.load_json(ANALYSIS_RUNS_KEY, default=[]))

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from typing import Any
 
 from xcrawler.services.llm_calls import LLMCallRecorder
 
@@ -8,7 +10,7 @@ from xcrawler.services.llm_calls import LLMCallRecorder
 def deepseek_profile_summary(
     cluster_text: str,
     *,
-    client_factory,
+    client_factory: Callable[[], Any],
     model: str,
     max_retries: int = 3,
     call_recorder: LLMCallRecorder | None = None,
@@ -78,3 +80,5 @@ def deepseek_profile_summary(
             else:
                 print(f"❌ 画像生成失败: {str(e)}")
                 raise
+
+    raise RuntimeError("画像生成未执行；max_retries 必须大于等于 1")

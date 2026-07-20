@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import logging
 import sys
 from collections.abc import Sequence
 
 from xcrawler import __version__
 from xcrawler.storage.factory import STORAGE_BACKENDS
 from xcrawler.utils import cli_validation
+from xcrawler.utils.logging import configure_logging
+
+logger = logging.getLogger(__name__)
 
 
 def _run_script(module_name: str, args: Sequence[str]) -> int:
+    logger.debug("dispatching command module=%s args=%s", module_name, list(args))
     module = importlib.import_module(module_name)
     old_argv = sys.argv[:]
     try:
@@ -18,7 +23,9 @@ def _run_script(module_name: str, args: Sequence[str]) -> int:
         result = module.main()
     finally:
         sys.argv = old_argv
-    return int(result or 0)
+    exit_code = int(result or 0)
+    logger.debug("command completed module=%s exit_code=%d", module_name, exit_code)
+    return exit_code
 
 
 def _add_common_options(parser: argparse.ArgumentParser, *, model: bool = False) -> None:
@@ -26,7 +33,7 @@ def _add_common_options(parser: argparse.ArgumentParser, *, model: bool = False)
     parser.add_argument("--cache-dir", help="缓存目录")
     if model:
         parser.add_argument("--model", help="LLM 模型名")
-    parser.add_argument("--verbose", action="store_true", help="保留参数，供后续详细日志使用")
+    parser.add_argument("--verbose", action="store_true", help="显示命令分派、请求重试和存储诊断")
 
 
 def _add_storage_options(parser: argparse.ArgumentParser) -> None:
@@ -96,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = subparsers.add_parser("demo", help="无需 API Key 生成内置示例报告")
     demo.add_argument("--output", help="示例数据和报告输出目录")
+    demo.add_argument("--verbose", action="store_true", help="显示命令分派和存储诊断")
     demo.set_defaults(handler=_handle_demo)
 
     translate = subparsers.add_parser("translate", help="同步或重翻已有原始推文")
@@ -253,7 +261,8 @@ def _handle_export_csv(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.handler(args)
+    configure_logging(verbose=bool(getattr(args, "verbose", False)))
+    return int(args.handler(args))
 
 
 if __name__ == "__main__":

@@ -122,4 +122,5 @@ def require_secret(name: str, value: str | None, *, purpose: str | None = None) 
     if is_missing_secret(value):
         suffix = f"，用于{purpose}" if purpose else ""
         raise RuntimeError(f"未检测到有效的 {name}{suffix}。请复制 .env.example 为 .env 并填写真实值。")
+    assert value is not None
     return value.strip()

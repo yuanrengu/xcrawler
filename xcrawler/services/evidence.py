@@ -80,7 +80,8 @@ def validate_life_event_evidence(
         validated_events = []
         for event in events or []:
             event_dict = dict(event) if isinstance(event, dict) else {"description": str(event)}
-            valid_ids = validate_evidence_tweet_ids(event_dict.get("evidence_tweet_ids"), evidence_map)
+            evidence_ids = event_dict.get("evidence_tweet_ids")
+            valid_ids = validate_evidence_tweet_ids(evidence_ids if isinstance(evidence_ids, list) else None, evidence_map)
             event_dict["evidence_tweet_ids"] = valid_ids
             if not valid_ids:
                 event_dict["evidence_status"] = "missing"

@@ -206,6 +206,9 @@ xcrawler analyze interest -u MiracleHe --model deepseek-chat --limit 300
 # 增量抓取指定用户和目标日期
 xcrawler fetch-more -u MiracleHe --target-date 2023-01-01
 
+# 显示命令分派、HTTP 重试和 JSON 存储诊断（不会输出密钥）
+xcrawler fetch -u MiracleHe --pages 10 --verbose
+
 # 查看帮助
 xcrawler --help
 xcrawler analyze --help
@@ -862,6 +865,7 @@ python3 -m pip install -e ".[all]"
 | 可视化 | `pip install -e ".[viz]"` | matplotlib 图表生成 |
 | 全功能 | `pip install -e ".[all]"` | 聚类 + 可视化，推荐首次安装 |
 | 测试 | `pip install -e ".[test]"` | pytest 测试框架 |
+| 开发 | `pip install -e ".[dev]"` | 测试、Ruff、mypy、构建和发布检查 |
 
 完整依赖列表见 [`pyproject.toml`](https://github.com/yuanrengu/xcrawler/blob/main/pyproject.toml)。
 
@@ -972,12 +976,14 @@ chmod +x refetch_data.sh
 ## 🧪 运行测试
 
 ```bash
-# 安装测试依赖后运行
-python3 -m pip install -e ".[test]"
+# 安装开发依赖后运行完整质量检查
+python3 -m pip install -e ".[dev]"
+ruff check .
+mypy xcrawler
 python3 -m pytest
 
-# 运行特定测试类
-python3 -m pytest tests/test_all.py::TestCleanText -v
+# 运行特定测试
+python3 -m pytest tests/test_translation.py -v
 ```
 
 项目测试覆盖文本清洗、翻译、聚类、CLI 校验、隐私脱敏、调用级 LLM 观测和 SQLite 事务兼容性等模块。
