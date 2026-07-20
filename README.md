@@ -997,7 +997,9 @@ python3 -m pytest tests/test_translation.py -v
 
 ### 存储与 Provider
 
-默认 `JsonStore` 行为保持不变，适合个人、小规模、低频分析：`analysis_runs.json` 保存任务级元数据，`llm_calls.json` 保存调用级元数据。需要长期、多用户或频繁运行时，可设置 `STORAGE_BACKEND=sqlite`，或在支持的命令后增加 `--storage sqlite`。`SQLiteStore` 使用结构化 `analysis_runs`、`llm_calls` 表和必要索引，并为其他 `Storage` key 提供 `json_documents` 兼容表；启用 WAL、事务和 busy timeout。原始推文、翻译、缓存、图表和报告仍是普通文件。
+默认 `JsonStore` 适合个人和小规模分析：`analysis_runs.json` 保存任务级元数据，`llm_calls.json` 保存调用级元数据。每个受管 JSON 使用同名 `.lock` advisory lock（默认最多等待 5 秒）；读取、写入、备份恢复和多文件事务会跨进程串行化，`append_json_record()` 的读取—追加—写回作为同一临界区完成。多文件事务按规范化路径顺序取锁，避免不同调用顺序造成死锁。锁文件会保留供后续运行复用，进程退出或崩溃时操作系统会自动释放实际锁。
+
+锁只覆盖单次存储操作，不会把“读取 → 网络请求/长时间分析 → 再写入”的整个业务流程变成事务。需要长期、多用户或频繁运行时，可设置 `STORAGE_BACKEND=sqlite`，或在支持的命令后增加 `--storage sqlite`。`SQLiteStore` 使用结构化 `analysis_runs`、`llm_calls` 表和必要索引，并为其他 `Storage` key 提供 `json_documents` 兼容表；启用 WAL、事务和 busy timeout。原始推文、翻译、缓存、图表和报告仍是普通文件。
 
 ```bash
 # 临时启用 SQLite；默认数据库为 cache/xcrawler.db

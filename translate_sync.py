@@ -23,6 +23,7 @@ from xcrawler.services.translation_cache import (
 )
 from xcrawler.services.tweets import merge_translated_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
+from xcrawler.storage.file_lock import file_lock
 from xcrawler.storage.json_store import load_json, save_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
@@ -164,10 +165,11 @@ def main():
     if args.force:
         backup_path = translated_file_path + ".bak"
         if os.path.exists(translated_file_path):
-            reject_symlink(translated_file_path, label="翻译文件")
-            reject_symlink(backup_path, label="翻译备份")
-            shutil.copy2(translated_file_path, backup_path)
-            protect_private_file(backup_path)
+            with file_lock(translated_file_path):
+                reject_symlink(translated_file_path, label="翻译文件")
+                reject_symlink(backup_path, label="翻译备份")
+                shutil.copy2(translated_file_path, backup_path)
+                protect_private_file(backup_path)
             print(f"📋 已备份旧翻译文件: {backup_path}")
         print("⚠️  强制模式：将覆盖现有的翻译文件")
         translated_data = []
