@@ -19,6 +19,7 @@
 - 📊 **多维分析** — 情感趋势、Hashtag/Mention 网络、24h 活跃热力图
 - 🛡️ **隐私默认** — 敏感生活事件及证据默认隐藏，需显式开启
 - 📦 **本地优先** — 所有 JSON、CSV、图表、HTML 报告均存储在本地 `cache/` 目录
+- 🔒 **私有文件权限** — POSIX 上新目录默认 `0700`、受管数据文件默认 `0600`，并拦截文件级符号链接跳转
 - 🧩 **模块化** — 统一 `xcrawler` CLI，支持可插拔存储和 LLM Provider
 
 ```bash
@@ -1091,6 +1092,7 @@ LLM 调用通过 `LLMProvider` 抽象保留 DeepSeek/OpenAI 兼容 Provider 入�
 - 如确需完整敏感事件证据，必须显式传入 `--include-sensitive-events`。
 - `visualize.py` 生成 HTML 报告时默认隐藏敏感事件证据原文。
 - 邮箱、电话号码、地址类文本会在报告证据中做基础脱敏。
+- POSIX 系统中新建缓存/导出目录使用 `0700`，JSON、备份、SQLite、CSV、HTML 和 PNG 使用 `0600`。已有父目录不会被自动改权；收到警告后可自行检查并执行 `chmod 700 <目录>`。
 
 数据清理：
 

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
+from xcrawler.paths import ensure_private_dir, protect_private_file, reject_symlink
 from xcrawler.storage.base import Storage
 from xcrawler.storage.keys import ANALYSIS_RUNS_KEY, LLM_CALLS_KEY
 
@@ -41,11 +42,14 @@ class SQLiteStore(Storage):
         self.path = path
         self.timeout = timeout
         if path != ":memory:":
-            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            ensure_private_dir(os.path.dirname(os.path.abspath(path)))
+            self._validate_files()
         self._memory_connection: sqlite3.Connection | None = None
         self._initialize()
 
     def _new_connection(self) -> sqlite3.Connection:
+        if self.path != ":memory:":
+            self._validate_files()
         connection = sqlite3.connect(self.path, timeout=self.timeout)
         connection.row_factory = sqlite3.Row
         connection.execute(f"PRAGMA busy_timeout = {int(self.timeout * 1000)}")
@@ -53,7 +57,19 @@ class SQLiteStore(Storage):
         if self.path != ":memory:":
             connection.execute("PRAGMA journal_mode = WAL")
             connection.execute("PRAGMA synchronous = NORMAL")
+            self._protect_files()
         return connection
+
+    def _managed_files(self) -> tuple[str, ...]:
+        return (self.path, f"{self.path}-wal", f"{self.path}-shm")
+
+    def _validate_files(self) -> None:
+        for path in self._managed_files():
+            reject_symlink(path, label="SQLite 文件")
+
+    def _protect_files(self) -> None:
+        for path in self._managed_files():
+            protect_private_file(path)
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -68,6 +84,7 @@ class SQLiteStore(Storage):
             yield connection
         finally:
             connection.close()
+            self._protect_files()
 
     def _initialize(self) -> None:
         try:

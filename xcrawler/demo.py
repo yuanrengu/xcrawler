@@ -4,6 +4,7 @@ import argparse
 import os
 from typing import cast
 
+from xcrawler.paths import ensure_private_dir
 from xcrawler.storage.json_store import save_json
 
 DEMO_USERNAME = "xcrawler_demo"
@@ -73,7 +74,7 @@ def _sample_data() -> dict[str, object]:
 def generate_demo(output_dir: str) -> str:
     from visualize import generate_html_report
 
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_private_dir(output_dir)
     data = _sample_data()
     save_json(os.path.join(output_dir, f"{DEMO_USERNAME}_raw_tweets.json"), data["raw"])
     save_json(os.path.join(output_dir, f"{DEMO_USERNAME}_translated.json"), data["translated"])

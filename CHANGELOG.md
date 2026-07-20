@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Create new local cache/export directories with POSIX `0700` and managed data files with `0600`, while warning instead of modifying pre-existing parent directories
+- Reject path traversal in JSON storage keys and file-level symlinks for managed JSON, backup, SQLite, CSV, HTML, and PNG targets
 - Split the monolithic test suite by responsibility and enforce independent coverage floors for full fetch, incremental fetch, and X API pagination code
 - Add a full-fetch transaction matrix plus property-based timeline response contract tests
 - Add a reproducible development extra, type-checking CI, Python 3.13/3.14 coverage, and Python dependency updates

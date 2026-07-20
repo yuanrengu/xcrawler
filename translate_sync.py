@@ -6,7 +6,7 @@ import shutil
 
 from xcrawler.clients.llm import create_openai_client
 from xcrawler.config import load_config, require_secret
-from xcrawler.paths import ensure_dir, translation_cache_path
+from xcrawler.paths import ensure_dir, protect_private_file, reject_symlink, translation_cache_path
 from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.records import (
     make_translated_tweet,
@@ -164,7 +164,10 @@ def main():
     if args.force:
         backup_path = translated_file_path + ".bak"
         if os.path.exists(translated_file_path):
+            reject_symlink(translated_file_path, label="翻译文件")
+            reject_symlink(backup_path, label="翻译备份")
             shutil.copy2(translated_file_path, backup_path)
+            protect_private_file(backup_path)
             print(f"📋 已备份旧翻译文件: {backup_path}")
         print("⚠️  强制模式：将覆盖现有的翻译文件")
         translated_data = []

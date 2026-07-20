@@ -7,6 +7,7 @@ from collections import Counter
 from datetime import datetime
 
 from xcrawler.config import load_config
+from xcrawler.paths import ensure_private_dir, prepare_private_output, protect_private_file
 from xcrawler.services.analysis_runs import (
     complete_analysis_run,
     create_analysis_run,
@@ -136,7 +137,9 @@ def chart_hashtag_bar(hashtag_counts, output_dir, username, top_n=20):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_hashtags.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ Hashtag 柱状图: {path}")
     return path
@@ -163,7 +166,9 @@ def chart_mention_bar(mention_counts, output_dir, username, top_n=20):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_mentions.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ Mention 柱状图: {path}")
     return path
@@ -194,7 +199,7 @@ def main():
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
     output_dir = args.output or os.path.join(CACHE_DIR, "charts")
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_private_dir(output_dir)
 
     print("=" * 60)
     print(f"🏷️  Hashtag / Mention 网络分析: @{TARGET_USERNAME}")

@@ -98,9 +98,6 @@ def _get_ds_client():
 # Deferred: HEADERS built in validate_runtime_config() after token validation
 HEADERS: dict[str, str] = {}
 
-# 创建缓存目录
-ensure_dir(CACHE_DIR)
-
 # 翻译缓存
 translation_cache: dict[str, Any] = new_translation_cache()
 
@@ -256,7 +253,7 @@ def main():
         CACHE_DIR = args.cache_dir
     if args.analysis_limit is not None:
         ANALYSIS_LIMIT = args.analysis_limit
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    ensure_dir(CACHE_DIR)
     llm_call_recorder = LLMCallRecorder(
         create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path),
         pricing=_config.llm_pricing,
