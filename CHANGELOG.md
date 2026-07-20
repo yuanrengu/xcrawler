@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Split the monolithic test suite by responsibility and enforce independent coverage floors for full fetch, incremental fetch, and X API pagination code
 - Add a full-fetch transaction matrix plus property-based timeline response contract tests
+- Add a reproducible development extra, type-checking CI, Python 3.13/3.14 coverage, and Python dependency updates
+- Make the unified CLI `--verbose` flag emit command, HTTP retry, and JSON storage diagnostics
 
 ### Fixed
 - Treat a full-fetch page limit with a remaining `next_token` as partial instead of a complete snapshot

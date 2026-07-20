@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from typing import cast
 
 from xcrawler.storage.json_store import save_json
 
@@ -78,7 +79,7 @@ def generate_demo(output_dir: str) -> str:
     save_json(os.path.join(output_dir, f"{DEMO_USERNAME}_translated.json"), data["translated"])
     save_json(os.path.join(output_dir, f"{DEMO_USERNAME}_interest_profile.json"), data["profile"])
     save_json(os.path.join(output_dir, f"{DEMO_USERNAME}_behavior.json"), data["behavior"])
-    return generate_html_report(DEMO_USERNAME, [], output_dir, data)
+    return cast(str, generate_html_report(DEMO_USERNAME, [], output_dir, data))
 
 
 def main() -> int:

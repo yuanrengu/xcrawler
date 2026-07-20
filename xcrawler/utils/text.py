@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 
 def clean_text(text: str) -> str:
@@ -17,7 +18,7 @@ def detect_language(text: str) -> str:
         clean = re.sub(r"http\S+|@\w+|#\w+", "", text).strip()
         if len(clean) < 3:
             return "unknown"
-        return detect(clean)
+        return cast(str, detect(clean))
     except ImportError:
         return "unknown"
     except Exception:

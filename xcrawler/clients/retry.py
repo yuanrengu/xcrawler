@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -48,7 +51,17 @@ def request_json_with_retries(
             )
         try:
             requests_used += 1
+            logger.debug(
+                "HTTP attempt page=%d attempt=%d/%d budget=%d/%d url=%s",
+                page_number,
+                attempt,
+                max_retries,
+                requests_used,
+                request_budget,
+                url,
+            )
             response = request_get(url, headers=headers, params=params, timeout=10)
+            logger.debug("HTTP response page=%d status=%d", page_number, response.status_code)
             if response.status_code == 429:
                 reset_time = response.headers.get("x-rate-limit-reset")
                 if reset_time is None:
@@ -78,6 +91,7 @@ def request_json_with_retries(
                         stop_reason="rate_limited",
                     )
                 retries += 1
+                logger.debug("rate limited page=%d wait_seconds=%d", page_number, wait_seconds)
                 print(f"⏳ API 限流，{wait_seconds} 秒后重试 ({attempt}/{max_retries})...")
                 sleep(wait_seconds)
                 continue
@@ -116,6 +130,7 @@ def request_json_with_retries(
 
         retries += 1
         delay = min(2 ** (attempt - 1), 8)
+        logger.debug("retry scheduled page=%d delay_seconds=%d", page_number, delay)
         print(f"⚠️ 第 {page_number} 页请求失败，{delay} 秒后重试 ({attempt}/{max_retries})...")
         sleep(delay)
 

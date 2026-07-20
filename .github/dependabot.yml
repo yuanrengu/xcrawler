@@ -1,5 +1,16 @@
 version: 2
 updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      python-runtime:
+        dependency-type: production
+      python-development:
+        dependency-type: development
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

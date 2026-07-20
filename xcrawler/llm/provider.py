@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 
 @dataclass
@@ -37,7 +38,7 @@ class OpenAICompatibleProvider:
         started = perf_counter()
         response = self.client.chat.completions.create(
             model=model,
-            messages=messages,
+            messages=cast(list[ChatCompletionMessageParam], messages),
             temperature=temperature,
         )
         latency_ms = int((perf_counter() - started) * 1000)

@@ -2,6 +2,7 @@
 
 import csv
 import json
+import logging
 from contextlib import closing
 from datetime import datetime
 from types import SimpleNamespace
@@ -559,6 +560,47 @@ class TestCli:
             cli.main(["demo", "--output", "sample-output"])
 
         mock_run.assert_called_once_with("xcrawler.demo", ["--output", "sample-output"])
+
+    def test_verbose_configures_diagnostics_without_forwarding_legacy_flag(self):
+        from xcrawler import cli
+
+        with (
+            patch("xcrawler.cli.configure_logging") as mock_logging,
+            patch("xcrawler.cli._run_script", return_value=0) as mock_run,
+        ):
+            assert cli.main(["fetch", "--user", "alice", "--verbose"]) == 0
+
+        mock_logging.assert_called_once_with(verbose=True)
+        mock_run.assert_called_once_with("main", ["--user", "alice"])
+
+    def test_demo_accepts_verbose(self):
+        from xcrawler import cli
+
+        with (
+            patch("xcrawler.cli.configure_logging") as mock_logging,
+            patch("xcrawler.cli._run_script", return_value=0),
+        ):
+            assert cli.main(["demo", "--verbose"]) == 0
+
+        mock_logging.assert_called_once_with(verbose=True)
+
+    def test_logging_configuration_is_idempotent(self):
+        from xcrawler.utils.logging import configure_logging
+
+        logger = logging.getLogger("xcrawler")
+        configure_logging(verbose=True)
+        configure_logging(verbose=True)
+
+        managed_handlers = [
+            handler for handler in logger.handlers if getattr(handler, "_xcrawler_cli_handler", False)
+        ]
+        assert logger.level == logging.DEBUG
+        assert len(managed_handlers) == 1
+        assert managed_handlers[0].level == logging.DEBUG
+
+        configure_logging(verbose=False)
+        assert logger.level == logging.WARNING
+        assert managed_handlers[0].level == logging.WARNING
 
     def test_demo_generates_local_report_without_external_calls(self, tmp_path):
         from xcrawler.demo import generate_demo

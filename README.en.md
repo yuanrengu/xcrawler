@@ -60,8 +60,9 @@ Base installation supports fetching, translation, export, and the no-key demo. I
 ## Development
 
 ```bash
-python3 -m pip install -e ".[test]"
+python3 -m pip install -e ".[dev]"
 ruff check .
+mypy xcrawler
 pytest -ra
 python3 -m build
 ```
