@@ -3,6 +3,8 @@
 import csv
 import json
 import logging
+import os
+import stat
 from contextlib import closing
 from datetime import datetime
 from types import SimpleNamespace
@@ -54,6 +56,9 @@ class TestExportCsvHelpers:
         assert "world" in content
         assert "user" in content
 
+        if os.name == "posix":
+            assert stat.S_IMODE(os.stat(output).st_mode) == 0o600
+
     def test_export_translations(self, tmp_path):
         from export_csv import export_translations
         data = [
@@ -68,6 +73,20 @@ class TestExportCsvHelpers:
         assert "42" in content
         assert "你好" in content
         assert "en" in content
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX symlink semantics")
+    def test_export_rejects_symlinked_target(self, tmp_path):
+        from export_csv import export_tweets
+        from xcrawler.paths import UnsafePathError
+
+        outside = tmp_path / "outside.csv"
+        outside.write_text("keep", encoding="utf-8")
+        linked = tmp_path / "tweets.csv"
+        linked.symlink_to(outside)
+
+        with pytest.raises(UnsafePathError, match="符号链接"):
+            export_tweets([], str(linked))
+        assert outside.read_text(encoding="utf-8") == "keep"
 
     def test_export_tweets_escapes_formula_and_preserves_long_id(self, tmp_path):
         from export_csv import export_tweets
@@ -166,6 +185,9 @@ class TestJsonStore:
         path = tmp_path / "nested" / "data.json"
         save_json(str(path), {"a": 1})
         assert load_json(str(path)) == {"a": 1}
+        if os.name == "posix":
+            assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
     def test_load_json_missing_returns_default(self, tmp_path):
         from xcrawler.storage.json_store import load_json
@@ -229,6 +251,8 @@ class TestJsonStore:
 
         assert recovered == {"version": 1}
         assert json.loads(path.read_text(encoding="utf-8")) == {"version": 1}
+        if os.name == "posix":
+            assert stat.S_IMODE((tmp_path / "data.json.bak").stat().st_mode) == 0o600
 
     def test_load_json_corrupt_without_backup_raises(self, tmp_path):
         from xcrawler.storage.json_store import JsonStoreError, load_json
@@ -247,6 +271,51 @@ class TestJsonStore:
         store.append_json_record("runs.json", {"id": "2"})
 
         assert store.load_json("runs.json") == [{"id": "1"}, {"id": "2"}]
+
+    @pytest.mark.parametrize("key", ["", "..", "../escape.json", "/tmp/escape.json"])
+    def test_json_store_rejects_unsafe_keys(self, tmp_path, key):
+        from xcrawler.paths import UnsafePathError
+        from xcrawler.storage.json_store import JsonStore
+
+        with pytest.raises(UnsafePathError, match="存储键"):
+            JsonStore(str(tmp_path)).path_for(key)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX symlink semantics")
+    def test_json_store_allows_symlinked_root_but_rejects_symlinked_file(self, tmp_path):
+        from xcrawler.paths import UnsafePathError
+        from xcrawler.storage.json_store import JsonStore, load_json
+
+        real_root = tmp_path / "real-cache"
+        real_root.mkdir(mode=0o700)
+        linked_root = tmp_path / "cache-link"
+        linked_root.symlink_to(real_root, target_is_directory=True)
+
+        store = JsonStore(str(linked_root))
+        store.save_json("safe.json", {"safe": True})
+        assert store.load_json("safe.json") == {"safe": True}
+
+        target = tmp_path / "outside.json"
+        target.write_text('{"secret": true}', encoding="utf-8")
+        (real_root / "redirect.json").symlink_to(target)
+        with pytest.raises(UnsafePathError, match="符号链接"):
+            load_json(str(real_root / "redirect.json"))
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX symlink semantics")
+    def test_save_json_rejects_symlinked_backup(self, tmp_path):
+        from xcrawler.paths import UnsafePathError
+        from xcrawler.storage.json_store import load_json, save_json
+
+        path = tmp_path / "data.json"
+        path.write_text('{"version": 1}', encoding="utf-8")
+        outside = tmp_path / "outside.json"
+        outside.write_text('{"keep": true}', encoding="utf-8")
+        (tmp_path / "data.json.bak").symlink_to(outside)
+
+        with pytest.raises(UnsafePathError, match="符号链接"):
+            load_json(str(path))
+        with pytest.raises(UnsafePathError, match="符号链接"):
+            save_json(str(path), {"version": 2})
+        assert json.loads(outside.read_text(encoding="utf-8")) == {"keep": True}
 
 class TestSQLiteStore:
     """测试可选 SQLite 元数据存储。"""
@@ -356,6 +425,22 @@ class TestSQLiteStore:
         assert journal_mode == "wal"
         assert "idx_analysis_runs_username_started" in indexes
         assert "idx_llm_calls_run_started" in indexes
+        if os.name == "posix":
+            assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX symlink semantics")
+    def test_file_database_rejects_symlink(self, tmp_path):
+        from xcrawler.paths import UnsafePathError
+        from xcrawler.storage.sqlite_store import SQLiteStore
+
+        outside = tmp_path / "outside.db"
+        outside.touch()
+        linked = tmp_path / "metadata.db"
+        linked.symlink_to(outside)
+
+        with pytest.raises(UnsafePathError, match="符号链接"):
+            SQLiteStore(str(linked))
 
     def test_unknown_schema_version_is_not_silently_overwritten(self, tmp_path):
         import sqlite3
@@ -610,6 +695,8 @@ class TestCli:
         assert report == str(tmp_path / "xcrawler_demo_report.html")
         assert (tmp_path / "xcrawler_demo_raw_tweets.json").exists()
         assert "Trustworthy AI" in (tmp_path / "xcrawler_demo_report.html").read_text(encoding="utf-8")
+        if os.name == "posix":
+            assert stat.S_IMODE(os.stat(report).st_mode) == 0o600
 
     def test_pyproject_has_console_script(self):
         with open("pyproject.toml", encoding="utf-8") as f:
@@ -646,6 +733,22 @@ class TestPathValidation:
 
         with pytest.raises(ValueError, match="文件后缀"):
             cache_path(str(tmp_path), "alice", suffix)
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX permission semantics")
+    def test_private_directory_creation_and_existing_directory_policy(self, tmp_path):
+        from xcrawler.paths import ensure_private_dir
+
+        created = tmp_path / "created" / "nested"
+        ensure_private_dir(str(created))
+        assert stat.S_IMODE(created.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(created.stat().st_mode) == 0o700
+
+        existing = tmp_path / "existing"
+        existing.mkdir(mode=0o755)
+        existing.chmod(0o755)
+        with pytest.warns(RuntimeWarning, match="目录权限可能暴露"):
+            ensure_private_dir(str(existing))
+        assert stat.S_IMODE(existing.stat().st_mode) == 0o755
 
 class TestConfigValidation:
     """测试配置和密钥校验"""

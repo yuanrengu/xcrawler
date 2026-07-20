@@ -11,6 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from xcrawler.config import load_config
+from xcrawler.paths import ensure_private_dir, open_private_text, prepare_private_output, protect_private_file
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils import cli_validation
@@ -107,7 +108,9 @@ def chart_hourly_heatmap(raw_tweets, output_dir, username):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_hourly.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ 24小时分布图: {path}")
     return path
@@ -137,7 +140,9 @@ def chart_weekday_bar(raw_tweets, output_dir, username):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_weekday.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ 星期分布图: {path}")
     return path
@@ -169,7 +174,9 @@ def chart_language_pie(translated_data, output_dir, username):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_language.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ 语言分布图: {path}")
     return path
@@ -201,7 +208,9 @@ def chart_interest_tags(profile_data, output_dir, username):
 
     plt.tight_layout()
     path = os.path.join(output_dir, f"{username}_interests.png")
+    prepare_private_output(path)
     plt.savefig(path, dpi=150)
+    protect_private_file(path)
     plt.close()
     print(f"   ✅ 兴趣画像图: {path}")
     return path
@@ -298,7 +307,7 @@ def generate_html_report(username, chart_paths, output_dir, data=None, include_s
 </html>"""
 
     path = os.path.join(output_dir, f"{username}_report.html")
-    with open(path, 'w', encoding='utf-8') as f:
+    with open_private_text(path, encoding='utf-8') as f:
         f.write(report_html)
     print(f"   ✅ HTML 报告: {path}")
     return path
@@ -314,7 +323,7 @@ def main():
         CACHE_DIR = args.cache_dir
     output_dir = args.output or os.path.join(CACHE_DIR, "charts")
 
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_private_dir(output_dir)
 
     print("=" * 60)
     print(f"📊 数据可视化: @{TARGET_USERNAME}")

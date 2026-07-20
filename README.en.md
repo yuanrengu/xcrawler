@@ -4,6 +4,8 @@
 
 xcrawler turns a public X/Twitter timeline into a local, evidence-linked profile report. It fetches public posts, translates them, analyzes interests, behavior, sentiment, and social signals, then stores JSON, CSV, charts, and HTML reports on your machine.
 
+On POSIX systems, newly created cache/export directories default to `0700` and managed JSON, SQLite, CSV, HTML, and PNG files default to `0600`. Existing parent directories are warned about but never chmodded automatically.
+
 > The project analyzes public content only. Generated profiles are probabilistic summaries, not verified facts. Follow the X API terms and applicable privacy laws.
 
 ## 60-second demo — no API key

@@ -9,6 +9,7 @@ import csv
 import os
 
 from xcrawler.config import load_config
+from xcrawler.paths import ensure_private_dir, open_private_text
 from xcrawler.services.records import normalize_translated_tweets
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils import cli_validation
@@ -53,7 +54,7 @@ def parse_args():
 
 def export_tweets(raw_tweets, output_path):
     """导出原始推文"""
-    with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
+    with open_private_text(output_path, newline='', encoding='utf-8-sig') as f:
         writer = _csv_writer(f)
         writer.writerow(["id", "text", "created_at", "hashtags", "mentions"])
         for t in raw_tweets:
@@ -73,7 +74,7 @@ def export_tweets(raw_tweets, output_path):
 def export_translations(translated_data, output_path):
     """导出翻译数据"""
     translated_data = normalize_translated_tweets(translated_data)
-    with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
+    with open_private_text(output_path, newline='', encoding='utf-8-sig') as f:
         writer = _csv_writer(f)
         writer.writerow(["tweet_id", "original", "translated", "detected_language", "created_at"])
         for item in translated_data:
@@ -93,7 +94,7 @@ def export_interests(profile_data, output_path):
         print("   ⚠️ 无兴趣画像数据")
         return
 
-    with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
+    with open_private_text(output_path, newline='', encoding='utf-8-sig') as f:
         writer = _csv_writer(f)
         writer.writerow(["tag", "level", "confidence", "keywords", "evidence_count", "evidence_tweet_ids", "evidence_status"])
         for interest in profile_data.get("interests", []):
@@ -118,7 +119,7 @@ def main():
     if args.cache_dir:
         CACHE_DIR = args.cache_dir
     output_dir = args.output or os.path.join(CACHE_DIR, "csv")
-    os.makedirs(output_dir, exist_ok=True)
+    ensure_private_dir(output_dir)
 
     print("=" * 60)
     print(f"📤 CSV 导出: @{TARGET_USERNAME}")

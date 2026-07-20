@@ -8,6 +8,12 @@ import tempfile
 import warnings
 from typing import Any
 
+from xcrawler.paths import (
+    ensure_private_dir,
+    protect_private_file,
+    reject_symlink,
+    validate_managed_filename,
+)
 from xcrawler.storage.base import Storage
 
 logger = logging.getLogger(__name__)
@@ -18,13 +24,17 @@ class JsonStoreError(RuntimeError):
 
 
 def _read_json(path: str) -> Any:
+    reject_symlink(path, label="JSON 文件")
+    protect_private_file(path)
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
 def _atomic_copy(source: str, destination: str) -> None:
     parent = os.path.dirname(destination) or "."
-    os.makedirs(parent, exist_ok=True)
+    ensure_private_dir(parent)
+    reject_symlink(source, label="源文件")
+    reject_symlink(destination, label="目标文件")
     temp_path: str | None = None
     try:
         with open(source, "rb") as source_file, tempfile.NamedTemporaryFile(
@@ -40,12 +50,16 @@ def _atomic_copy(source: str, destination: str) -> None:
             os.fsync(temp_file.fileno())
         os.replace(temp_path, destination)
         temp_path = None
+        protect_private_file(destination)
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
 
 
 def load_json(path: str, default: Any = None) -> Any:
+    reject_symlink(path, label="JSON 文件")
+    backup_path = f"{path}.bak"
+    reject_symlink(backup_path, label="JSON 备份")
     if not os.path.exists(path):
         logger.debug("JSON load miss path=%s", path)
         return default
@@ -53,7 +67,6 @@ def load_json(path: str, default: Any = None) -> Any:
     try:
         return _read_json(path)
     except (json.JSONDecodeError, UnicodeDecodeError) as primary_error:
-        backup_path = f"{path}.bak"
         if not os.path.exists(backup_path):
             raise JsonStoreError(f"JSON 文件损坏且没有可恢复备份: {path}") from primary_error
         try:
@@ -69,7 +82,9 @@ def load_json(path: str, default: Any = None) -> Any:
 
 def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = True) -> None:
     parent = os.path.dirname(path) or "."
-    os.makedirs(parent, exist_ok=True)
+    ensure_private_dir(parent)
+    reject_symlink(path, label="JSON 文件")
+    reject_symlink(f"{path}.bak", label="JSON 备份")
     logger.debug("JSON save path=%s create_backup=%s", path, create_backup)
 
     # Serialize to a temporary file before touching the current good version.
@@ -99,6 +114,7 @@ def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = Tr
 
         os.replace(temp_path, path)
         temp_path = None
+        protect_private_file(path)
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
@@ -111,9 +127,13 @@ def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -
     rollback: dict[str, str | None] = {}
     replaced: list[str] = []
     try:
+        for path in updates:
+            reject_symlink(path, label="JSON 文件")
+            reject_symlink(f"{path}.bak", label="JSON 备份")
+
         for path, data in updates.items():
             parent = os.path.dirname(path) or "."
-            os.makedirs(parent, exist_ok=True)
+            ensure_private_dir(parent)
             with tempfile.NamedTemporaryFile(
                 "w",
                 encoding="utf-8",
@@ -140,6 +160,7 @@ def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -
                 delete=False,
             ) as backup_file:
                 rollback[path] = backup_file.name
+                reject_symlink(path, label="JSON 文件")
                 with open(path, "rb") as source_file:
                     shutil.copyfileobj(source_file, backup_file)
                 backup_file.flush()
@@ -150,6 +171,7 @@ def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -
             os.replace(temp_path, path)
             pending[path] = ""
             replaced.append(path)
+            protect_private_file(path)
         logger.debug("JSON transaction committed files=%s", replaced)
     except Exception:
         logger.debug("JSON transaction rollback files=%s", replaced, exc_info=True)
@@ -177,7 +199,7 @@ class JsonStore(Storage):
         self.root_dir = root_dir
 
     def path_for(self, key: str) -> str:
-        return os.path.join(self.root_dir, key)
+        return os.path.join(self.root_dir, validate_managed_filename(key))
 
     def load_json(self, key: str, default: Any = None) -> Any:
         return load_json(self.path_for(key), default=default)
