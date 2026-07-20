@@ -15,12 +15,16 @@ from xcrawler.paths import (
     validate_managed_filename,
 )
 from xcrawler.storage.base import Storage
+from xcrawler.storage.file_lock import DEFAULT_LOCK_TIMEOUT, FileLockTimeout, file_lock, file_locks
 
 logger = logging.getLogger(__name__)
 
 
 class JsonStoreError(RuntimeError):
     """Raised when persisted JSON cannot be read or recovered safely."""
+
+
+JsonLockTimeout = FileLockTimeout
 
 
 def _read_json(path: str) -> Any:
@@ -56,7 +60,7 @@ def _atomic_copy(source: str, destination: str) -> None:
             os.unlink(temp_path)
 
 
-def load_json(path: str, default: Any = None) -> Any:
+def _load_json_unlocked(path: str, default: Any = None) -> Any:
     reject_symlink(path, label="JSON 文件")
     backup_path = f"{path}.bak"
     reject_symlink(backup_path, label="JSON 备份")
@@ -80,7 +84,12 @@ def load_json(path: str, default: Any = None) -> Any:
         raise JsonStoreError(f"无法读取 JSON 文件: {path}") from error
 
 
-def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = True) -> None:
+def load_json(path: str, default: Any = None, *, lock_timeout: float = DEFAULT_LOCK_TIMEOUT) -> Any:
+    with file_lock(path, timeout=lock_timeout):
+        return _load_json_unlocked(path, default=default)
+
+
+def _save_json_unlocked(path: str, data: Any, *, indent: int = 2, create_backup: bool = True) -> None:
     parent = os.path.dirname(path) or "."
     ensure_private_dir(parent)
     reject_symlink(path, label="JSON 文件")
@@ -120,7 +129,19 @@ def save_json(path: str, data: Any, *, indent: int = 2, create_backup: bool = Tr
             os.unlink(temp_path)
 
 
-def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -> None:
+def save_json(
+    path: str,
+    data: Any,
+    *,
+    indent: int = 2,
+    create_backup: bool = True,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> None:
+    with file_lock(path, timeout=lock_timeout):
+        _save_json_unlocked(path, data, indent=indent, create_backup=create_backup)
+
+
+def _replace_json_files_atomically_unlocked(updates: dict[str, Any], *, indent: int = 2) -> None:
     """先完整序列化所有文件，再统一替换；任一替换失败时回滚已替换文件。"""
     logger.debug("JSON transaction begin files=%s", list(updates))
     pending: dict[str, str] = {}
@@ -192,24 +213,39 @@ def replace_json_files_atomically(updates: dict[str, Any], *, indent: int = 2) -
                 os.unlink(backup_path)
 
 
+def replace_json_files_atomically(
+    updates: dict[str, Any],
+    *,
+    indent: int = 2,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> None:
+    with file_locks(list(updates), timeout=lock_timeout):
+        _replace_json_files_atomically_unlocked(updates, indent=indent)
+
+
 class JsonStore(Storage):
     """JSON-file store rooted at a cache directory."""
 
-    def __init__(self, root_dir: str):
+    def __init__(self, root_dir: str, *, lock_timeout: float = DEFAULT_LOCK_TIMEOUT):
+        if lock_timeout < 0:
+            raise ValueError("lock timeout must be >= 0")
         self.root_dir = root_dir
+        self.lock_timeout = lock_timeout
 
     def path_for(self, key: str) -> str:
         return os.path.join(self.root_dir, validate_managed_filename(key))
 
     def load_json(self, key: str, default: Any = None) -> Any:
-        return load_json(self.path_for(key), default=default)
+        return load_json(self.path_for(key), default=default, lock_timeout=self.lock_timeout)
 
     def save_json(self, key: str, data: Any) -> None:
-        save_json(self.path_for(key), data)
+        save_json(self.path_for(key), data, lock_timeout=self.lock_timeout)
 
     def append_json_record(self, key: str, record: dict[str, Any]) -> None:
-        records = self.load_json(key, default=[])
-        if not isinstance(records, list):
-            records = []
-        records.append(record)
-        self.save_json(key, records)
+        path = self.path_for(key)
+        with file_lock(path, timeout=self.lock_timeout):
+            records = _load_json_unlocked(path, default=[])
+            if not isinstance(records, list):
+                records = []
+            records.append(record)
+            _save_json_unlocked(path, records)

@@ -6,6 +6,8 @@ xcrawler turns a public X/Twitter timeline into a local, evidence-linked profile
 
 On POSIX systems, newly created cache/export directories default to `0700` and managed JSON, SQLite, CSV, HTML, and PNG files default to `0600`. Existing parent directories are warned about but never chmodded automatically.
 
+Managed JSON operations use persistent sibling `.lock` files with a five-second default timeout. Reads, writes, recovery, record appends, and multi-file transactions are serialized across processes; abandoned locks are released automatically by the operating system when a process exits.
+
 > The project analyzes public content only. Generated profiles are probabilistic summaries, not verified facts. Follow the X API terms and applicable privacy laws.
 
 ## 60-second demo — no API key
