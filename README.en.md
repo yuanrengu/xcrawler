@@ -308,7 +308,7 @@ CSV fields with spreadsheet formula prefixes are escaped, and tweet IDs are expo
 - Explicitly symlinked cache roots are supported, while managed files, backups, lock files, SQLite sidecars, path traversal, and unsafe link replacement are rejected.
 - Windows permission enforcement is best-effort and should be paired with appropriate filesystem ACLs.
 
-The JSON lock covers one storage operation. It intentionally does not turn a long workflow such as “read → network request → analyze → write” into one large transaction.
+Archive updates and shared cache saves re-read and merge the latest disk data under one lock. Network requests and model calls run outside the lock; an entire workflow is not one transaction. Explicit snapshot replacement still replaces the selected data.
 
 ## Storage and observability
 

@@ -25,11 +25,18 @@ from xcrawler.services.translation_cache import (
     legacy_translation_cache_entry_count,
     new_translation_cache,
     normalize_translation_cache,
+    persist_translation_cache,
     translation_cache_entry_count,
 )
 from xcrawler.services.tweets import merge_translated_tweets, merge_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
-from xcrawler.storage.json_store import load_json, replace_json_files_atomically, save_json
+from xcrawler.storage.json_store import (
+    load_json,
+    replace_json_files_atomically,
+    save_json,
+    update_json,
+    update_json_files_atomically,
+)
 from xcrawler.utils import cli_validation
 from xcrawler.utils.optional_dependencies import modules_available
 from xcrawler.utils.text import clean_text, detect_language
@@ -129,7 +136,7 @@ def load_translation_cache():
 
 def save_translation_cache(cache):
     """保存翻译缓存"""
-    save_json(translation_cache_path(CACHE_DIR), normalize_translation_cache(cache))
+    persist_translation_cache(translation_cache_path(CACHE_DIR), cache)
 
 
 def deepseek_translate(text: str, detected_lang: str = None, use_cache: bool = True) -> str | None:
@@ -330,8 +337,7 @@ def main():
         existing_raw = load_json(raw_file, default=[])
         existing_raw = validate_raw_tweets(existing_raw, source=raw_file)
         if not args.replace:
-            raw_tweets = merge_tweets(existing_raw, raw_tweets)
-            save_json(raw_file, raw_tweets)
+            raw_tweets = update_json(raw_file, lambda current: merge_tweets(current, raw_tweets), default=[])
             print(f"💾 原始推文已保存至: {raw_file}\n")
 
         # 3. 清洗 + 批量翻译
@@ -339,18 +345,15 @@ def main():
             if args.replace:
                 translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
                 if os.path.exists(translated_file):
-                    existing_translated = normalize_translated_tweets(load_json(translated_file, default=[]))
                     snapshot_ids = {str(tweet["id"]) for tweet in raw_tweets}
-                    retained_translations = [
-                        item
-                        for item in existing_translated
-                        if item.get("tweet_id") is not None and str(item["tweet_id"]) in snapshot_ids
-                    ]
-                    replace_json_files_atomically({
-                        raw_file: raw_tweets,
-                        translated_file: retained_translations,
+                    update_json_files_atomically({
+                        raw_file: lambda current: raw_tweets,
+                        translated_file: lambda current: [
+                            item for item in normalize_translated_tweets(current)
+                            if item.get("tweet_id") is not None and str(item["tweet_id"]) in snapshot_ids
+                        ],
                     })
-                    print(f"🧹 snapshot 已移除 {len(existing_translated) - len(retained_translations)} 条过期译文")
+                    print("🧹 snapshot 已移除不在当前快照中的过期译文")
                 else:
                     save_json(raw_file, raw_tweets)
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
@@ -461,8 +464,11 @@ def main():
             replace_json_files_atomically({raw_file: raw_tweets, translated_file: translated_data})
             print(f"💾 原始推文已保存至: {raw_file}")
         else:
-            translated_data = merge_translated_tweets(existing_translated, translated_data)
-            save_json(translated_file, translated_data)
+            translated_data = update_json(
+                translated_file,
+                lambda current: merge_translated_tweets(normalize_translated_tweets(current), translated_data),
+                default=[],
+            )
         print(f"💾 翻译结果已保存至: {translated_file}")
         print(f"✅ 成功翻译 {len(translated)} 条推文\n")
 

@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make the unified CLI `--verbose` flag emit command, HTTP retry, and JSON storage diagnostics
 
 ### Fixed
+- Hold JSON locks across business-level read/merge/write updates for tweets, translations, and shared caches
+- Reject empty translation responses and ignore existing blank cache entries so retries can recover
+- Clean up multi-file transaction temporary files when serialization or flushing fails
 - Treat a full-fetch page limit with a remaining `next_token` as partial instead of a complete snapshot
 - Reject HTTP 200 X API responses containing errors, malformed pagination metadata, or repeated pagination tokens
 - Prevent partial full-fetch results from entering `--replace`; archive mode may save them but exits with status 2

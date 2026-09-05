@@ -5,6 +5,8 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from xcrawler.storage.json_store import update_json
+
 TRANSLATION_CACHE_SCHEMA_VERSION = 2
 TRANSLATION_PROMPT_VERSION = "social-media-zh-v1"
 DEFAULT_TARGET_LANGUAGE = "zh-CN"
@@ -94,7 +96,7 @@ def get_cached_translation(
     if entry.get("context") != context.to_dict():
         return None
     translated = entry.get("translated")
-    return translated if isinstance(translated, str) else None
+    return translated if isinstance(translated, str) and translated.strip() else None
 
 
 def set_cached_translation(
@@ -103,11 +105,26 @@ def set_cached_translation(
     translated: str,
     context: TranslationCacheContext,
 ) -> None:
+    if not isinstance(translated, str) or not translated.strip():
+        raise ValueError("不能缓存空白译文")
     cache = ensure_translation_cache(cache)
     cache["entries"][_cache_key(text, context)] = {
         "translated": translated,
         "context": context.to_dict(),
     }
+
+
+def persist_translation_cache(path: str, cache: dict[str, Any]) -> None:
+    """Merge cache entries with the latest disk version under its advisory lock."""
+    incoming = normalize_translation_cache(cache)
+
+    def merge(current: Any) -> dict[str, Any]:
+        result = normalize_translation_cache(current)
+        for section in ("entries", "legacy_entries"):
+            result[section].update(incoming[section])
+        return result
+
+    update_json(path, merge, default={})
 
 
 def translation_cache_entry_count(

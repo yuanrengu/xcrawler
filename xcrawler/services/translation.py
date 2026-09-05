@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from xcrawler.services.llm_calls import LLMCallRecorder
 from xcrawler.services.translation_cache import (
@@ -153,7 +153,10 @@ def translate_text(
                 temperature=0.1,
             )
             _record_usage(metrics, response)
-            result = cast(str, response.choices[0].message.content.strip())
+            content = response.choices[0].message.content
+            if not isinstance(content, str) or not content.strip():
+                raise ValueError("翻译响应必须包含非空文本")
+            result = content.strip()
             if call_recorder and started:
                 call_recorder.record_success(
                     operation=operation,

@@ -4,7 +4,7 @@ import hashlib
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.storage.json_store import load_json, update_json
 
 Encoder = Callable[[list[str]], Any]
 
@@ -50,6 +50,12 @@ def encode_texts_with_cache(
             raise ValueError("embedding encoder returned an unexpected number of vectors")
         for key, vector in zip(missing_keys, encoded):
             items[key] = vector
-        save_json(cache_path, {"version": 1, "items": items})
+        additions = dict(zip(missing_keys, encoded))
+
+        def merge(current: Any) -> dict[str, Any]:
+            latest = current.get("items") if isinstance(current, dict) else None
+            return {"version": 1, "items": {**(latest if isinstance(latest, dict) else {}), **additions}}
+
+        update_json(cache_path, merge, default={})
 
     return [items[key] for key in keys]
