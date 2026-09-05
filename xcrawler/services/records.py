@@ -37,8 +37,12 @@ def translation_record_is_current(record: dict[str, Any], original: str, config_
         str(record.get("original", ""))
     )
     recorded_config = record.get("config_fingerprint")
-    return recorded_source == translation_source_fingerprint(original) and (
-        recorded_config is None or recorded_config == config_fingerprint
+    translated = record.get("translated")
+    return (
+        recorded_source == translation_source_fingerprint(original)
+        and recorded_config == config_fingerprint
+        and isinstance(translated, str)
+        and bool(translated.strip())
     )
 
 

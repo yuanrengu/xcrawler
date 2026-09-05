@@ -282,6 +282,12 @@ class TestDeepseekTranslate:
 class TestDeepseekTranslateBatch:
     """测试 deepseek_translate_batch 批量翻译"""
 
+    @pytest.fixture(autouse=True)
+    def isolated_checkpoint_cache(self, tmp_path, monkeypatch):
+        import main
+
+        monkeypatch.setattr(main, "CACHE_DIR", str(tmp_path))
+
     def test_all_cached(self):
         import main
         from xcrawler.services.translation_cache import new_translation_cache, set_cached_translation

@@ -207,6 +207,7 @@ def translate_batch(
     call_recorder: LLMCallRecorder | None = None,
     provider_name: str = "unknown",
     operation: str = "translation_batch",
+    checkpoint: Callable[[], None] | None = None,
 ) -> list[str | None]:
     if batch_size < 1:
         raise ValueError("batch_size must be >= 1")
@@ -251,6 +252,8 @@ def translate_batch(
         to_translate_langs.append(lang)
 
     if not to_translate_texts:
+        if checkpoint:
+            checkpoint()
         return results
 
     total_batches = (len(to_translate_texts) + batch_size - 1) // batch_size
@@ -338,5 +341,10 @@ def translate_batch(
                     _increment_metric(metrics, "failed_batches")
                     for idx in batch_indices:
                         results[idx] = fallback_translate(texts[idx], langs[idx], use_cache)
+
+        # Persist only after leaving the request/retry block: storage failures
+        # must propagate instead of causing another paid model request.
+        if checkpoint:
+            checkpoint()
 
     return results

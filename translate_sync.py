@@ -213,6 +213,7 @@ def main():
         call_recorder=call_recorder,
         provider_name="deepseek",
         operation="translation_sync_batch",
+        checkpoint=lambda: persist_translation_cache(translation_cache_path(cache_dir), translation_cache),
     )
 
     new_translations = []

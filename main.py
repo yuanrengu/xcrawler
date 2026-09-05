@@ -180,6 +180,7 @@ def deepseek_translate_batch(texts: list[str], detected_langs: list[str | None] 
         cache_context=_translation_cache_context(),
         call_recorder=llm_call_recorder,
         provider_name="deepseek",
+        checkpoint=lambda: save_translation_cache(translation_cache),
     )
 
 
@@ -386,7 +387,6 @@ def main():
 
         # 收集结果
         failed_list = []
-        save_counter = 0
         for i, (tweet_id, original, lang, created) in enumerate(zip(all_ids, all_texts, all_langs, all_created)):
             translated_text = batch_results[i]
             if translated_text:
@@ -399,9 +399,6 @@ def main():
                     created_at=created,
                     config_fingerprint=_translation_cache_context().fingerprint,
                 ))
-                save_counter += 1
-                if save_counter % 50 == 0:
-                    save_translation_cache(translation_cache)
             else:
                 failed_list.append({"tweet_id": tweet_id, "original": original, "detected_language": lang, "created_at": created})
 
