@@ -242,10 +242,15 @@ def update_json_files_atomically(
     updates: dict[str, Callable[[Any], Any]],
     *,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    skip_missing: frozenset[str] = frozenset(),
 ) -> None:
-    """Transform a group of documents while holding all locks in canonical order."""
+    """Transform documents under all locks; skip_missing is checked only after locking."""
     with file_locks(list(updates), timeout=lock_timeout):
-        data = {path: update(_load_json_unlocked(path)) for path, update in updates.items()}
+        data = {
+            path: update(_load_json_unlocked(path))
+            for path, update in updates.items()
+            if path not in skip_missing or os.path.lexists(path)
+        }
         _replace_json_files_atomically_unlocked(data)
 
 

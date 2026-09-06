@@ -12,6 +12,18 @@ TRANSLATION_PROMPT_VERSION = "social-media-zh-v1"
 DEFAULT_TARGET_LANGUAGE = "zh-CN"
 
 
+class _CacheEntries(dict[str, Any]):
+    """JSON-compatible entries with process-local changes, never serialized."""
+
+    def __init__(self, entries: dict[str, Any] | None = None):
+        super().__init__(entries or {})
+        self.pending: dict[str, Any] = {}
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        super().__setitem__(key, value)
+        self.pending[key] = value
+
+
 @dataclass(frozen=True)
 class TranslationCacheContext:
     provider: str
@@ -33,7 +45,7 @@ class TranslationCacheContext:
 def new_translation_cache(*, legacy_entries: dict[str, str] | None = None) -> dict[str, Any]:
     return {
         "version": TRANSLATION_CACHE_SCHEMA_VERSION,
-        "entries": {},
+        "entries": _CacheEntries(),
         "legacy_entries": dict(legacy_entries or {}),
     }
 
@@ -47,7 +59,9 @@ def normalize_translation_cache(data: Any) -> dict[str, Any]:
         legacy_entries = data.get("legacy_entries")
         return {
             "version": TRANSLATION_CACHE_SCHEMA_VERSION,
-            "entries": dict(entries) if isinstance(entries, dict) else {},
+            "entries": entries if isinstance(entries, _CacheEntries) else _CacheEntries(
+                entries if isinstance(entries, dict) else None
+            ),
             "legacy_entries": (
                 {str(key): value for key, value in legacy_entries.items() if isinstance(value, str)}
                 if isinstance(legacy_entries, dict)
@@ -72,8 +86,9 @@ def ensure_translation_cache(cache: dict[str, Any]) -> dict[str, Any]:
         cache.clear()
         cache.update(normalized)
     else:
-        if not isinstance(cache.get("entries"), dict):
-            cache["entries"] = {}
+        entries = cache.get("entries")
+        if not isinstance(entries, _CacheEntries):
+            cache["entries"] = _CacheEntries(entries if isinstance(entries, dict) else None)
         if not isinstance(cache.get("legacy_entries"), dict):
             cache["legacy_entries"] = {}
     return cache
@@ -115,16 +130,26 @@ def set_cached_translation(
 
 
 def persist_translation_cache(path: str, cache: dict[str, Any]) -> None:
-    """Merge cache entries with the latest disk version under its advisory lock."""
+    """Commit local translations only; loaded entries cannot overwrite corrections."""
     incoming = normalize_translation_cache(cache)
+    entries = incoming["entries"]
+    changes = dict(entries.pending)
 
     def merge(current: Any) -> dict[str, Any]:
         result = normalize_translation_cache(current)
         for section in ("entries", "legacy_entries"):
-            result[section].update(incoming[section])
+            # Preserve imports/migrations without overwriting an existing value.
+            for key, value in incoming[section].items():
+                result[section].setdefault(key, value)
+        result["entries"].update(changes)
         return result
 
-    update_json(path, merge, default={})
+    saved = update_json(path, merge, default={})
+    # Only acknowledge changes after a successful commit. Refresh stale entries
+    # so subsequent batches also use corrections made by other processes.
+    entries.clear()
+    entries.update(saved["entries"])
+    entries.pending.clear()
 
 
 def translation_cache_entry_count(
