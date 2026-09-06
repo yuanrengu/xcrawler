@@ -68,7 +68,7 @@ def main():
     args = argparse.ArgumentParser(description="翻译同步/重翻工具")
     args.add_argument("-u", "--user", type=cli_validation.x_username, help="目标用户名")
     args.add_argument("--cache-dir", help="缓存目录")
-    args.add_argument("--force", action="store_true", help="强制重新翻译")
+    args.add_argument("--force", action="store_true", help="从头强制重翻（忽略缓存，不支持断点续跑）")
     args.add_argument("--storage", "--storage-backend", dest="storage_backend", choices=STORAGE_BACKENDS,
                       default=_config.storage_backend, help="运行元数据存储后端（默认 json）")
     args.add_argument("--sqlite-path", default=_config.sqlite_path, help="SQLite 数据库路径")
@@ -111,6 +111,7 @@ def main():
         print(f"⚠️ 已迁移但未复用来源不明的旧缓存: {legacy_entries} 条")
     if args.force:
         print("🧹 强制模式：忽略并清除内存中的翻译缓存")
+        print("ℹ️ 强制重翻不支持断点续跑；中断后再次 --force 会从头重翻。")
         translation_cache = new_translation_cache()
 
     # 2. Identify tweets to process
@@ -213,6 +214,7 @@ def main():
         call_recorder=call_recorder,
         provider_name="deepseek",
         operation="translation_sync_batch",
+        checkpoint=lambda: persist_translation_cache(translation_cache_path(cache_dir), translation_cache),
     )
 
     new_translations = []
