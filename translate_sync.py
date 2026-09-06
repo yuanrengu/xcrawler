@@ -19,12 +19,13 @@ from xcrawler.services.translation_cache import (
     legacy_translation_cache_entry_count,
     new_translation_cache,
     normalize_translation_cache,
+    persist_translation_cache,
     translation_cache_entry_count,
 )
 from xcrawler.services.tweets import merge_translated_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
 from xcrawler.storage.file_lock import file_lock
-from xcrawler.storage.json_store import load_json, save_json
+from xcrawler.storage.json_store import load_json, update_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.text import clean_text, detect_language
 
@@ -229,19 +230,23 @@ def main():
 
     if args.force and len(new_translations) != len(to_process):
         failed_count = len(to_process) - len(new_translations)
-        save_json(translation_cache_path(cache_dir), normalize_translation_cache(translation_cache))
+        persist_translation_cache(translation_cache_path(cache_dir), translation_cache)
         print(f"\n❌ 强制重翻失败 {failed_count} 条，未覆盖原翻译文件。")
         print(f"   旧数据仍保留在: {translated_file_path}")
         return 1
 
     if new_translations:
-        current_data = merge_translated_tweets(translated_data, new_translations)
-
+        current_data = update_json(
+            translated_file_path,
+            lambda current: merge_translated_tweets(
+                [] if args.force else normalize_translated_tweets(current), new_translations
+            ),
+            default=[],
+        )
         print(f"\n💾 保存更新后的翻译数据 ({len(current_data)} 条)...")
-        save_json(translated_file_path, current_data)
 
         # Save updated cache to disk
-        save_json(translation_cache_path(cache_dir), normalize_translation_cache(translation_cache))
+        persist_translation_cache(translation_cache_path(cache_dir), translation_cache)
 
         print(
             f"   缓存命中/未命中/跳过: {metrics.get('cache_hits', 0)} / "

@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import warnings
+from collections.abc import Callable
 from typing import Any
 
 from xcrawler.paths import (
@@ -141,6 +142,20 @@ def save_json(
         _save_json_unlocked(path, data, indent=indent, create_backup=create_backup)
 
 
+def update_json(
+    path: str,
+    update: Callable[[Any], Any],
+    *,
+    default: Any = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> Any:
+    """Read, transform and save under one lock; callbacks must not perform I/O."""
+    with file_lock(path, timeout=lock_timeout):
+        data = update(_load_json_unlocked(path, default=default))
+        _save_json_unlocked(path, data)
+        return data
+
+
 def _replace_json_files_atomically_unlocked(updates: dict[str, Any], *, indent: int = 2) -> None:
     """先完整序列化所有文件，再统一替换；任一替换失败时回滚已替换文件。"""
     logger.debug("JSON transaction begin files=%s", list(updates))
@@ -163,10 +178,10 @@ def _replace_json_files_atomically_unlocked(updates: dict[str, Any], *, indent: 
                 suffix=".pending",
                 delete=False,
             ) as temp_file:
+                pending[path] = temp_file.name
                 json.dump(data, temp_file, ensure_ascii=False, indent=indent)
                 temp_file.flush()
                 os.fsync(temp_file.fileno())
-                pending[path] = temp_file.name
 
         for path in updates:
             if not os.path.exists(path):
@@ -221,6 +236,22 @@ def replace_json_files_atomically(
 ) -> None:
     with file_locks(list(updates), timeout=lock_timeout):
         _replace_json_files_atomically_unlocked(updates, indent=indent)
+
+
+def update_json_files_atomically(
+    updates: dict[str, Callable[[Any], Any]],
+    *,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    skip_missing: frozenset[str] = frozenset(),
+) -> None:
+    """Transform documents under all locks; skip_missing is checked only after locking."""
+    with file_locks(list(updates), timeout=lock_timeout):
+        data = {
+            path: update(_load_json_unlocked(path))
+            for path, update in updates.items()
+            if path not in skip_missing or os.path.lexists(path)
+        }
+        _replace_json_files_atomically_unlocked(data)
 
 
 class JsonStore(Storage):

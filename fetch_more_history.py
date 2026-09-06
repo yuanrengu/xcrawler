@@ -20,7 +20,7 @@ from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
 from xcrawler.services.tweets import merge_tweets, validate_raw_tweets
-from xcrawler.storage.json_store import JsonStoreError, load_json, save_json
+from xcrawler.storage.json_store import JsonStoreError, load_json, save_json, update_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
 
@@ -494,8 +494,9 @@ def main():
         if tweets:
             print(f"✅ 发现 {len(tweets)} 条新推文！")
             new_tweets_forward = tweets
-            existing_tweets = merge_tweets(existing_tweets, new_tweets_forward)
-            save_json(raw_file, existing_tweets)
+            existing_tweets = update_json(
+                raw_file, lambda current: merge_tweets(current, new_tweets_forward), default=[]
+            )
             print(f"💾 Forward 阶段已安全保存: {len(existing_tweets)} 条")
         else:
             print("✅ 没有发现更新的推文")
@@ -553,8 +554,9 @@ def main():
         
         if tweets:
             print(f"✅ 抓取到 {len(tweets)} 条历史推文")
-            existing_tweets = merge_tweets(existing_tweets, new_tweets_backward)
-            save_json(raw_file, existing_tweets)
+            existing_tweets = update_json(
+                raw_file, lambda current: merge_tweets(current, new_tweets_backward), default=[]
+            )
             print(f"💾 Backward 阶段已安全保存: {len(existing_tweets)} 条")
         else:
             print("⚠️ 未能抓取到更多历史推文 (可能已达API限制或无更多数据)")
