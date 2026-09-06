@@ -7,6 +7,8 @@ from typing import Any, Protocol, cast
 from openai import OpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
+from xcrawler.utils.text import require_model_text
+
 
 @dataclass
 class LLMResponse:
@@ -43,9 +45,9 @@ class OpenAICompatibleProvider:
         )
         latency_ms = int((perf_counter() - started) * 1000)
         usage = getattr(response, "usage", None)
-        raw = response.choices[0].message.content
+        raw = require_model_text(response.choices[0].message.content)
         return LLMResponse(
-            content=raw.strip() if raw else "",
+            content=raw,
             model=model,
             provider=self.name,
             prompt_tokens=getattr(usage, "prompt_tokens", None),

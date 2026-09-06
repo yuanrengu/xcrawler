@@ -4,6 +4,7 @@ import hashlib
 from typing import Any
 
 from xcrawler.models import TranslatedTweet
+from xcrawler.utils.text import usable_translation
 
 
 def make_translated_tweet(
@@ -41,8 +42,7 @@ def translation_record_is_current(record: dict[str, Any], original: str, config_
     return (
         recorded_source == translation_source_fingerprint(original)
         and recorded_config == config_fingerprint
-        and isinstance(translated, str)
-        and bool(translated.strip())
+        and usable_translation(translated)
     )
 
 
