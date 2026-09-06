@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import cast
+from typing import TypeGuard, cast
 
 
 def clean_text(text: str) -> str:
@@ -23,3 +23,17 @@ def detect_language(text: str) -> str:
         return "unknown"
     except Exception:
         return "unknown"
+
+
+def usable_translation(value: object) -> TypeGuard[str]:
+    """Reject blank text and bare batch labels, including legacy cached output."""
+    return isinstance(value, str) and bool(value.strip()) and not all(
+        re.fullmatch(r"(?:\[\d+\]|\d+[.\):：])\s*[.\):：]?", line.strip())
+        for line in value.splitlines() if line.strip()
+    )
+
+
+def require_model_text(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("模型响应必须包含非空文本")
+    return value.strip()

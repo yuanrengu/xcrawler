@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from xcrawler.services.llm_calls import LLMCallRecorder
+from xcrawler.utils.text import require_model_text
 
 
 def deepseek_profile_summary(
@@ -52,7 +53,7 @@ def deepseek_profile_summary(
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
             )
-            raw = response.choices[0].message.content
+            raw = require_model_text(response.choices[0].message.content)
             if call_recorder and started:
                 call_recorder.record_success(
                     operation=operation,
@@ -62,7 +63,7 @@ def deepseek_profile_summary(
                     response=response,
                     attempt=attempt + 1,
                 )
-            return raw.strip() if raw else ""
+            return raw
         except Exception as e:
             if call_recorder and started:
                 call_recorder.record_failure(

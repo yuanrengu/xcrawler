@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make the unified CLI `--verbose` flag emit command, HTTP retry, and JSON storage diagnostics
 
 ### Fixed
+- Reject bare batch labels in new and cached translations; sync retries affected legacy records
+- Reject empty profile/provider responses before recording success or saving reports
 - Correct forced-retranslation restart guidance and verify recovery through actual fetch/sync command entry points
 - Checkpoint translation caches after each batch so interrupted fetch/sync runs can reuse completed work
 - Revalidate legacy translations without configuration fingerprints and preserve old results until successful replacement
