@@ -294,7 +294,8 @@ CSV fields with spreadsheet formula prefixes are escaped, and tweet IDs are expo
 
 - Translation records include source-content and configuration fingerprints. Changed source text or model/prompt context triggers retranslation.
 - The translation cache is isolated by provider, model, target language, and prompt version.
-- Fetch and translation sync persist successful results to the cache after each batch. Restart normally with the same configuration to reuse completed work; an unfinished batch may need retrying. `--force` always bypasses cache, so omit it to reuse progress.
+- Fetch and normal translation sync persist successful results to the cache after each batch. Restart with the same configuration to reuse completed work for records still needing translation; an unfinished batch may need retrying.
+- Forced retranslation does not support resume. Running again with `--force` bypasses cache and retranslates from the beginning, potentially repeating costs. Omitting `--force` performs normal sync: valid old records are skipped, and newer cached translations are not automatically applied to them. Force-mode checkpoints are reusable cache entries, not a resumable task record.
 - Cache persistence errors stop the workflow without retrying the model call. Checkpoints do not commit partial raw/translated snapshots in `--replace` mode or a partial translated file in force mode.
 - Legacy records without a configuration fingerprint, or records with blank translations, are retranslated during sync. Old translations remain until their replacements succeed; the initial migration may require additional model calls.
 - Forced retranslation is all-or-nothing for the primary translated file.

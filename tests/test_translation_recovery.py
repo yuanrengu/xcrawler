@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from xcrawler.services.records import translation_record_is_current
+from xcrawler.services.records import make_translated_tweet, translation_record_is_current
 from xcrawler.services.translation import translate_batch
 from xcrawler.services.translation_cache import (
     TranslationCacheContext,
@@ -34,6 +34,12 @@ def test_command_checkpoints_before_interruption(tmp_path, monkeypatch, command)
     raw_path = str(tmp_path / "alice_raw_tweets.json")
     translated_path = str(tmp_path / "alice_translated.json")
     old = [{"tweet_id": "old", "original": "old", "translated": "旧译文"}]
+    if command == "force":
+        old = [make_translated_tweet(
+            tweet_id=item["id"], original=item["text"], translated="原有有效译文",
+            detected_language="en", created_at=item["created_at"],
+            config_fingerprint=translate_sync._translation_cache_context().fingerprint,
+        ) for item in raw]
     save_json(raw_path, raw)
     save_json(translated_path, old)
     client = MagicMock()
@@ -54,7 +60,8 @@ def test_command_checkpoints_before_interruption(tmp_path, monkeypatch, command)
         monkeypatch.setattr(main, "_get_ds_client", lambda: client)
         monkeypatch.setattr(main, "detect_language", lambda text: "en")
         # main mutates its configured globals; restore them when the test ends.
-        for name in ("CACHE_DIR", "TARGET_USERNAME", "BATCH_SIZE", "translation_cache", "llm_call_recorder"):
+        for name in ("CACHE_DIR", "TARGET_USERNAME", "BATCH_SIZE", "MAX_PAGES", "ANALYSIS_LIMIT",
+                     "translation_cache", "translation_metrics", "llm_call_recorder"):
             monkeypatch.setattr(main, name, getattr(main, name))
         run = main.main
         context = main._translation_cache_context()
@@ -77,17 +84,32 @@ def test_command_checkpoints_before_interruption(tmp_path, monkeypatch, command)
     assert get_cached_translation(saved, raw[0]["text"], context) == "第一"
     assert get_cached_translation(saved, raw[1]["text"], context) is None
 
-    # A normal resumed batch uses the durable entry and calls the model only
-    # for the unfinished item (force explicitly bypasses cache when requested).
+    # Restart the actual command, including its record selection and commit.
     resumed = MagicMock()
     resumed.chat.completions.create.return_value = response("[1] 第二")
-    result = translate_batch(
-        [item["text"] for item in raw], detected_langs=["en", "en"], use_cache=True,
-        cache=saved, client_factory=lambda: resumed, model=context.model, batch_size=1,
-        max_retries=1, fallback_translate=lambda *args: None, cache_context=context,
-    )
-    assert result == ["第一", "第二"]
-    resumed.chat.completions.create.assert_called_once()
+    if command == "fetch":
+        monkeypatch.setattr(main, "_get_ds_client", lambda: resumed)
+    else:
+        monkeypatch.setattr(translate_sync, "_make_client", lambda: resumed)
+        monkeypatch.setattr(sys, "argv", ["translate_sync", "-u", "alice", "--cache-dir", str(tmp_path)])
+    assert run() == 0
+    if command == "force":
+        # Removing --force is normal sync, NOT continuation of the forced run:
+        # already-valid old records are skipped even though a new cache exists.
+        resumed.chat.completions.create.assert_not_called()
+        assert load_json(translated_path) == old
+        monkeypatch.setattr(sys, "argv", [
+            "translate_sync", "-u", "alice", "--cache-dir", str(tmp_path), "--force",
+        ])
+        resumed.chat.completions.create.side_effect = [response("[1] 重翻第一"), response("[1] 重翻第二")]
+        assert run() == 0
+        assert resumed.chat.completions.create.call_count == 2
+        expected = {"0": "重翻第一", "1": "重翻第二"}
+    else:
+        resumed.chat.completions.create.assert_called_once()
+        expected = {"0": "第一", "1": "第二"}
+    actual = {item["tweet_id"]: item["translated"] for item in load_json(translated_path)}
+    assert {key: actual[key] for key in expected} == expected
 
 
 def test_checkpoint_failure_does_not_retry_model():
