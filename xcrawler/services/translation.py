@@ -12,7 +12,7 @@ from xcrawler.services.translation_cache import (
     get_cached_translation,
     set_cached_translation,
 )
-from xcrawler.utils.text import detect_language
+from xcrawler.utils.text import detect_language, usable_translation
 
 ClientFactory = Callable[[], Any]
 TranslationMetrics = dict[str, int | str]
@@ -66,6 +66,8 @@ def parse_batch_response(response: str, expected_count: int) -> list[str]:
     saw_numbered_line = False
     unnumbered_lines = 0
     for line in lines:
+        if not usable_translation(line):
+            return []
         match = re.match(r"^(?:\[(\d+)\]|(\d+)[\.\):：])\s*[\.\):：]?\s*(.+)", line)
         if match:
             saw_numbered_line = True
@@ -154,7 +156,7 @@ def translate_text(
             )
             _record_usage(metrics, response)
             content = response.choices[0].message.content
-            if not isinstance(content, str) or not content.strip():
+            if not usable_translation(content):
                 raise ValueError("翻译响应必须包含非空文本")
             result = content.strip()
             if call_recorder and started:

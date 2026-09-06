@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from xcrawler.storage.json_store import update_json
+from xcrawler.utils.text import usable_translation
 
 TRANSLATION_CACHE_SCHEMA_VERSION = 2
 TRANSLATION_PROMPT_VERSION = "social-media-zh-v1"
@@ -128,7 +129,7 @@ def get_cached_translation(
     if entry.get("context") != context.to_dict():
         return None
     translated = entry.get("translated")
-    return translated if isinstance(translated, str) and translated.strip() else None
+    return translated if isinstance(translated, str) and usable_translation(translated) else None
 
 
 def set_cached_translation(
@@ -137,7 +138,7 @@ def set_cached_translation(
     translated: str,
     context: TranslationCacheContext,
 ) -> None:
-    if not isinstance(translated, str) or not translated.strip():
+    if not usable_translation(translated):
         raise ValueError("不能缓存空白译文")
     cache = ensure_translation_cache(cache)
     cache["entries"][_cache_key(text, context)] = {
