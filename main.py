@@ -345,18 +345,15 @@ def main():
         if args.no_translate:
             if args.replace:
                 translated_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_translated.json")
-                if os.path.exists(translated_file):
-                    snapshot_ids = {str(tweet["id"]) for tweet in raw_tweets}
-                    update_json_files_atomically({
-                        raw_file: lambda current: raw_tweets,
-                        translated_file: lambda current: [
-                            item for item in normalize_translated_tweets(current)
-                            if item.get("tweet_id") is not None and str(item["tweet_id"]) in snapshot_ids
-                        ],
-                    })
-                    print("🧹 snapshot 已移除不在当前快照中的过期译文")
-                else:
-                    save_json(raw_file, raw_tweets)
+                snapshot_ids = {str(tweet["id"]) for tweet in raw_tweets}
+                update_json_files_atomically({
+                    raw_file: lambda current: raw_tweets,
+                    translated_file: lambda current: [
+                        item for item in normalize_translated_tweets(current)
+                        if item.get("tweet_id") is not None and str(item["tweet_id"]) in snapshot_ids
+                    ],
+                }, skip_missing=frozenset({translated_file}))
+                print("🧹 snapshot 已移除不在当前快照中的过期译文")
             print("⏭️  --no-translate 模式：跳过翻译和分析，仅保存原始推文")
             print(f"\n✅ 完成！原始推文已保存至: {raw_file}")
             return 2 if fetch_partial else 0

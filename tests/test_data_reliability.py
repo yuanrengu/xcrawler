@@ -12,6 +12,7 @@ from xcrawler.services.translation_cache import (
     TranslationCacheContext,
     get_cached_translation,
     new_translation_cache,
+    normalize_translation_cache,
     persist_translation_cache,
     set_cached_translation,
 )
@@ -143,3 +144,93 @@ def test_sync_preserves_translation_written_while_model_runs(tmp_path, monkeypat
     monkeypatch.setattr(translate_sync, "detect_language", lambda text: "en")
     assert translate_sync.main() == 0
     assert {record["tweet_id"] for record in load_json(path)} == {"1", "2"}
+
+
+@pytest.mark.parametrize("normalize", [False, True])
+def test_stale_cache_never_reverts_another_process_correction(tmp_path, normalize):
+    path = str(tmp_path / "cache.json")
+    context = TranslationCacheContext(provider="test", model="m")
+    seed = new_translation_cache()
+    set_cached_translation(seed, "same", "旧译文", context)
+    persist_translation_cache(path, seed)
+    stale = load_json(path)
+    if normalize:
+        stale = normalize_translation_cache(stale)
+    corrected = normalize_translation_cache(load_json(path))
+    set_cached_translation(corrected, "same", "新译文", context)
+    persist_translation_cache(path, corrected)
+    set_cached_translation(stale, "other", "其他", context)
+    persist_translation_cache(path, stale)
+    saved = load_json(path)
+    assert get_cached_translation(saved, "same", context) == "新译文"
+    assert get_cached_translation(stale, "same", context) == "新译文"
+    assert get_cached_translation(saved, "other", context) == "其他"
+    # After committing, this process must not replay its earlier correction.
+    set_cached_translation(corrected, "other", "再次修正", context)
+    persist_translation_cache(path, corrected)
+    persist_translation_cache(path, stale)
+    assert get_cached_translation(load_json(path), "other", context) == "再次修正"
+    assert set(saved) == {"version", "entries", "legacy_entries"}
+
+
+def test_failed_cache_commit_retains_pending_changes(tmp_path, monkeypatch):
+    import xcrawler.services.translation_cache as service
+
+    path = str(tmp_path / "cache.json")
+    context = TranslationCacheContext(provider="test", model="m")
+    cache = new_translation_cache()
+    set_cached_translation(cache, "same", "旧译文", context)
+    persist_translation_cache(path, cache)
+    set_cached_translation(cache, "same", "修正", context)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(service, "update_json", MagicMock(side_effect=OSError("disk full")))
+        with pytest.raises(OSError):
+            persist_translation_cache(path, cache)
+    assert get_cached_translation(load_json(path), "same", context) == "旧译文"
+    persist_translation_cache(path, cache)
+    assert get_cached_translation(load_json(path), "same", context) == "修正"
+
+
+@pytest.mark.parametrize("create_concurrently", [False, True])
+def test_replace_no_translate_checks_existence_after_acquiring_both_locks(tmp_path, monkeypatch, create_concurrently):
+    from contextlib import contextmanager
+
+    import main
+    import xcrawler.storage.json_store as storage
+
+    raw_path = str(tmp_path / "alice_raw_tweets.json")
+    trans_path = str(tmp_path / "alice_translated.json")
+    raw = [{"id": "new", "text": "new long text", "created_at": "2026-01-01T00:00:00Z"}]
+    real_locks = storage.file_locks
+    acquired = []
+
+    @contextmanager
+    def interleaved_locks(paths, **kwargs):
+        acquired.append(set(paths))
+        if create_concurrently:
+            save_json(trans_path, [{"tweet_id": "old", "original": "old", "translated": "旧"}])
+        with real_locks(paths, **kwargs):
+            yield
+
+    monkeypatch.setattr(storage, "file_locks", interleaved_locks)
+    options = SimpleNamespace(
+        user="alice", pages=1, batch_size=1, model=None, cache_dir=str(tmp_path),
+        analysis_limit=100, no_translate=True, replace=True, storage_backend="json", sqlite_path=None,
+    )
+    for name in ("CACHE_DIR", "TARGET_USERNAME", "MAX_PAGES", "BATCH_SIZE", "ANALYSIS_LIMIT",
+                 "translation_cache", "translation_metrics", "llm_call_recorder"):
+        monkeypatch.setattr(main, name, getattr(main, name))
+    monkeypatch.setattr(main, "parse_args", lambda: options)
+    monkeypatch.setattr(main, "validate_runtime_config", lambda **kwargs: None)
+    monkeypatch.setattr(main, "get_user_id", lambda username: "uid")
+    monkeypatch.setattr(main, "get_user_profile", lambda username: None)
+    monkeypatch.setattr(main, "fetch_tweets", lambda uid: main.x_api.TweetFetchResult(
+        raw, True, "no_next_token", 1, 1, 0,
+    ))
+    assert main.main() == 0
+    assert acquired == [{raw_path, trans_path}]
+    assert load_json(raw_path) == raw
+    if create_concurrently:
+        assert load_json(trans_path) == []
+    else:
+        assert not (tmp_path / "alice_translated.json").exists()
