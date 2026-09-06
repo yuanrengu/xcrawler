@@ -4,12 +4,28 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from xcrawler.storage.json_store import update_json
 
 TRANSLATION_CACHE_SCHEMA_VERSION = 2
 TRANSLATION_PROMPT_VERSION = "social-media-zh-v1"
 DEFAULT_TARGET_LANGUAGE = "zh-CN"
+
+
+def translation_endpoint_id(base_url: str) -> str:
+    """Hash normalized service location without credentials, query or fragment."""
+    parts = urlsplit(base_url.strip())
+    scheme = parts.scheme.lower()
+    host = (parts.hostname or "").lower()
+    if scheme not in ("http", "https") or not host:
+        raise ValueError("翻译 API 地址必须是有效的 HTTP(S) URL")
+    port = parts.port
+    authority = f"[{host}]" if ":" in host else host
+    if port is not None and (scheme, port) not in (("https", 443), ("http", 80)):
+        authority += f":{port}"
+    location = f"{scheme}://{authority}{parts.path.rstrip('/')}"
+    return hashlib.sha256(location.encode("utf-8")).hexdigest()
 
 
 class _CacheEntries(dict[str, Any]):
@@ -30,6 +46,7 @@ class TranslationCacheContext:
     model: str
     target_language: str = DEFAULT_TARGET_LANGUAGE
     prompt_version: str = TRANSLATION_PROMPT_VERSION
+    endpoint_id: str = ""
 
     def to_dict(self) -> dict[str, str]:
         return asdict(self)
