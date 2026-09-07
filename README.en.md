@@ -292,6 +292,8 @@ CSV fields with spreadsheet formula prefixes are escaped, and tweet IDs are expo
 
 ### Translation integrity
 
+Translation fingerprints also include a hash of the normalized API endpoint (scheme, host, port, and path; credentials, query parameters, and fragments are excluded). Switching endpoints triggers retranslation; default ports and trailing slashes do not change the identity. Existing cache entries without endpoint provenance are preserved but not reused, and old records are revalidated on the next sync. The first run after upgrading may require additional model calls.
+
 - Translation records include source-content and configuration fingerprints. Changed source text or model/prompt context triggers retranslation.
 - The translation cache is isolated by provider, model, target language, and prompt version.
 - Fetch and normal translation sync persist successful results to the cache after each batch. Restart with the same configuration to reuse completed work for records still needing translation; an unfinished batch may need retrying.

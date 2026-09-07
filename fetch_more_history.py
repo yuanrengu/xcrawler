@@ -19,7 +19,7 @@ from xcrawler.clients.retry import RequestAttemptsError, request_json_with_retri
 from xcrawler.clients.x_api import auth_headers
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_dir
-from xcrawler.services.tweets import merge_tweets, validate_raw_tweets
+from xcrawler.services.tweets import merge_tweets, tweet_order_key, validate_raw_tweets
 from xcrawler.storage.json_store import JsonStoreError, load_json, save_json, update_json
 from xcrawler.utils import cli_validation
 from xcrawler.utils.time import parse_twitter_datetime
@@ -441,9 +441,8 @@ def main():
     oldest_date = None
 
     if existing_tweets:
-        # 按ID排序（字符串ID可以字典序排序，但Twitter ID是大致随时间递增的数字）
-        # 安全起见，按 created_at 排序
-        existing_tweets.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+        # 按真实时间及数值 ID 排序，兼容秒/毫秒精度混合的数据。
+        existing_tweets.sort(key=tweet_order_key, reverse=True)
         
         newest_tweet = existing_tweets[0]
         oldest_tweet = existing_tweets[-1]

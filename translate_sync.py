@@ -21,6 +21,7 @@ from xcrawler.services.translation_cache import (
     normalize_translation_cache,
     persist_translation_cache,
     translation_cache_entry_count,
+    translation_endpoint_id,
 )
 from xcrawler.services.tweets import merge_translated_tweets, validate_raw_tweets
 from xcrawler.storage.factory import STORAGE_BACKENDS, create_store
@@ -61,7 +62,7 @@ def _make_client():
 
 
 def _translation_cache_context() -> TranslationCacheContext:
-    return TranslationCacheContext(provider="deepseek", model=LLM_MODEL)
+    return TranslationCacheContext(provider="deepseek", model=LLM_MODEL, endpoint_id=translation_endpoint_id(_config.deepseek_base_url))
 
 
 def main():

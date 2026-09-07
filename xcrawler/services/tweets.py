@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from xcrawler.utils.time import parse_twitter_datetime
+
+
+def tweet_order_key(record: dict[str, Any]) -> tuple[datetime, int, str]:
+    """Order by actual time then numeric ID; undated legacy translations sort last."""
+    timestamp = record.get("created_at")
+    parsed = parse_twitter_datetime(timestamp) if timestamp else datetime.min
+    identity = str(record.get("id") or record.get("tweet_id") or "")
+    return parsed, int(identity) if identity.isdecimal() else -1, identity
 
 
 class TweetSchemaError(ValueError):
@@ -45,7 +54,7 @@ def merge_tweets(existing_tweets: list[dict[str, Any]], new_tweets: list[dict[st
     for tweet in [*existing_tweets, *new_tweets]:
         tweet_id = tweet.get("id")
         records[str(tweet_id)] = tweet
-    return sorted(records.values(), key=lambda tweet: tweet.get("created_at", ""), reverse=True)
+    return sorted(records.values(), key=tweet_order_key, reverse=True)
 
 
 def merge_translated_tweets(
@@ -58,4 +67,4 @@ def merge_translated_tweets(
         tweet_id = record.get("tweet_id")
         key = ("id", str(tweet_id)) if tweet_id is not None else ("text", str(record.get("original", "")))
         records[key] = record
-    return sorted(records.values(), key=lambda record: record.get("created_at", ""), reverse=True)
+    return sorted(records.values(), key=tweet_order_key, reverse=True)
