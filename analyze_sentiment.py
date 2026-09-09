@@ -267,6 +267,11 @@ def main():
     run.failed_batches = run_stats["failed_batches"]
     run.total_tokens = run_stats["total_tokens"] or None
 
+    if run_stats["failed_batches"] == run_stats["batches"]:
+        record_failed_analysis_run(store, run, "所有情感分析批次失败，未生成有效分类")
+        print("❌ 所有情感分析批次失败，保留已有结果和图表")
+        return 1
+
     # 统计
     counts = Counter(sentiments)
     total = len(sentiments)
@@ -345,9 +350,9 @@ def main():
         print(f"   预估成本 (USD): {call_summary['estimated_cost']:.6f}")
 
     print("\n" + "=" * 60)
-    print("✅ 情感分析完成！")
+    print("⚠️ 情感分析部分完成，失败批次标记为 unknown" if run_stats["failed_batches"] else "✅ 情感分析完成！")
     print("=" * 60 + "\n")
-    return 0
+    return 2 if run_stats["failed_batches"] else 0
 
 
 if __name__ == "__main__":

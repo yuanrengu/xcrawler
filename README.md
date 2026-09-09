@@ -229,6 +229,8 @@ xcrawler analyze --help
 | `xcrawler report` | 生成图表和 HTML 报告 |
 | `xcrawler export csv` | 导出 CSV |
 
+兴趣画像和行为事件检测仅接受本次实际输入样本中的证据 ID。分析结果的 `sampling.sample_tweet_ids` 和运行记录的 `input_range.sample_tweet_ids` 保存本次抽样 ID，便于复核。
+
 统一 CLI 会校验关键数值参数：`pages >= 1`、`batch-size >= 1`、`analysis-limit >= 1`、`limit >= 1`、`top >= 1`、`interval >= 0`、`0 <= temperature <= 2`。运行前会显示执行计划（预估抓取页数、翻译批次、LLM 调用范围）。
 
 > 旧脚本入口（`main.py`、`analyze_pro.py` 等）仍保留作为 legacy 兼容，但不再逐条枚举其参数。
@@ -259,7 +261,7 @@ xcrawler report --include-sensitive-events
 - `{username}_interests.png` - 兴趣标签图
 - `{username}_report.html` - 汇总 HTML 报告，包含兴趣画像和生活事件的 evidence tweet 证据区
 
-默认情况下，HTML 报告会隐藏敏感生活事件证据；仅在显式传入 `--include-sensitive-events` 时展示。
+每次生成 HTML 报告都会重新执行隐私过滤，默认隐藏敏感生活事件描述、原文、译文及证据 ID，即使已有行为数据曾显式包含这些内容。旧数据缺少敏感标记时也会按事件类别和关键词过滤；仅在显式传入 `--include-sensitive-events` 时展示。
 `--format html` 与默认行为一致，生成 PNG 图表和 HTML 汇总报告；`--format png` 仅生成 PNG 图表。图表命令需安装 `.[viz]` 或 `.[all]` 可选依赖。
 
 > **快速决策**：首次使用 → `xcrawler fetch --user <用户名>` 开始；日常更新 → `xcrawler fetch-more` 或 `./refetch_data.sh -i`；已有数据仅需分析 → `xcrawler analyze interest`。需要完整历史时，配合 `.env` 中的 `TARGET_DATE` 使用 `fetch-more --target-date`。
@@ -295,7 +297,9 @@ xcrawler analyze sentiment -u MiracleHe --top 10
 - `cache/charts/{username}_sentiment_pie.png` - 情感分布饼图
 - `cache/{username}_sentiment.json` - 情感分析数据
 
-如果某个 LLM 批次调用失败或响应无法解析，对应推文会标记为 `unknown`，不会被误计为 `neutral`。
+如果部分 LLM 批次调用失败或响应无法解析，对应推文会标记为 `unknown`，不会被误计为 `neutral`；保存可用结果并返回退出码 `2`。全部批次失败时返回 `1`，保留已有结果和图表。完整成功返回 `0`。
+
+行为分析在时间统计完成、但事件检测或总结失败时，保存部分结果并返回 `2`；执行或保存失败返回 `1`，完整成功返回 `0`。
 
 ### 8. CSV 导出
 

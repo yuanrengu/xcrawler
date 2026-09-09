@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make the unified CLI `--verbose` flag emit command, HTTP retry, and JSON storage diagnostics
 
 ### Fixed
+- Reapply report privacy filtering to saved and legacy life events, hiding sensitive descriptions and all evidence by default
+- Restrict interest and behavior evidence to actual prompt samples and persist sample IDs for review
+- Return partial exit codes for incomplete analyses and preserve prior sentiment results when every batch fails
+- Persist interest results before recording success and prevent failure telemetry from masking persistence errors
 - Sort mixed-precision tweet timestamps chronologically with numeric ID tie-breaking for incremental boundaries
 - Isolate translation caches and record fingerprints by normalized API endpoint identity
 - Reject bare batch labels in new and cached translations; sync retries affected legacy records

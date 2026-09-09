@@ -301,7 +301,10 @@ Translation fingerprints also include a hash of the normalized API endpoint (sch
 - Cache persistence errors stop the workflow without retrying the model call. Checkpoints do not commit partial raw/translated snapshots in `--replace` mode or a partial translated file in force mode.
 - Legacy records without a configuration fingerprint, or records with blank translations, are retranslated during sync. Old translations remain until their replacements succeed; the initial migration may require additional model calls.
 - Forced retranslation is all-or-nothing for the primary translated file.
-- A failed or unparseable sentiment batch is marked `unknown`, never silently counted as neutral.
+- Partially failed sentiment analysis saves usable results, marks failed/unparseable batches `unknown`, and exits with code `2`. If every batch fails, it exits with `1` and preserves existing results and charts. Complete success exits with `0`.
+- Behavior analysis exits with `2` when time statistics are available but event detection or the summary fails, `1` on execution or persistence failure, and `0` on complete success.
+- Interest and life-event evidence must refer to records actually included in the current prompt. Sample IDs are stored in result `sampling.sample_tweet_ids` and run `input_range.sample_tweet_ids`.
+- Reports reapply privacy filtering on every generation, including previously saved sensitive data and legacy events without sensitivity flags. Sensitive descriptions, original text, translations, and evidence IDs are hidden unless `--include-sensitive-events` is explicitly supplied.
 
 ### Local persistence security
 

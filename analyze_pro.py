@@ -13,8 +13,8 @@ from xcrawler.llm.provider import DeepSeekProvider, OpenAICompatibleProvider
 from xcrawler.services.analysis_runs import (
     complete_analysis_run,
     create_analysis_run,
-    fail_analysis_run,
     record_analysis_run,
+    record_failed_analysis_run,
 )
 from xcrawler.services.evidence import validate_interest_evidence
 from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
@@ -299,14 +299,14 @@ def main():
         # 1. 加载数据
         print("📂 加载翻译数据...")
         translated_records = load_translated_records(cache_dir, TARGET_USERNAME)
-        all_texts = [
+        available_records = [item for item in translated_records if item.get("translated")]
+        sampled_records = sample_evenly(available_records, args.limit)
+        texts = [
             f"[tweet_id={item.get('tweet_id') or 'unknown'}] {item['translated']}"
-            for item in translated_records
-            if item.get("translated")
+            for item in sampled_records
         ]
-        texts = sample_evenly(all_texts, args.limit)
-        print(f"✅ 已加载 {len(all_texts)} 条翻译文本")
-        if len(all_texts) > len(texts):
+        print(f"✅ 已加载 {len(available_records)} 条翻译文本")
+        if len(available_records) > len(texts):
             print(f"⚠️ 长输入保护：按时间跨度均匀抽样分析 {len(texts)} 条文本，可通过 --limit 调整")
         print()
         
@@ -314,7 +314,7 @@ def main():
         print("🔍 开始分析用户兴趣画像...")
         print("⚙️  使用模型:", MODEL)
         print("📋 执行计划:")
-        print(f"   输入文本: {len(texts)} / {len(all_texts)} 条")
+        print(f"   输入文本: {len(texts)} / {len(available_records)} 条")
         print("   LLM 调用: 1 次兴趣画像分析")
         print(f"   长输入保护: 最多 {args.limit} 条文本")
         print()
@@ -325,9 +325,10 @@ def main():
             params={"temperature": args.temperature, "limit": args.limit},
             input_range={
                 "translated_records": len(translated_records),
-                "available_texts": len(all_texts),
+                "available_texts": len(available_records),
                 "analyzed_texts": len(texts),
                 "strategy": "single_prompt_even_sampling",
+                "sample_tweet_ids": [item.get("tweet_id") for item in sampled_records],
             },
             config={"provider": PROVIDER_NAME},
         )
@@ -348,11 +349,11 @@ def main():
             temperature=args.temperature,
             llm=observed_provider,
         )
-        result = validate_interest_evidence(result, translated_records, require_evidence=True)
+        result = validate_interest_evidence(result, sampled_records, require_evidence=True)
         result["analysis_run_id"] = run.id
+        result["sampling"] = dict(run.input_range)
         run.llm_calls = 1
         run.total_tokens = total_tokens
-        record_analysis_run(store, complete_analysis_run(run))
         call_summary = call_recorder.summary()
         print(
             f"📈 LLM 调用: {call_summary['successful_calls']} 成功 / "
@@ -371,6 +372,7 @@ def main():
         
         # 4. 保存结果
         save_analysis_result(result, cache_dir, TARGET_USERNAME)
+        record_analysis_run(store, complete_analysis_run(run))
         
         # 5. 统计信息
         if isinstance(result, dict) and "interests" in result:
@@ -392,7 +394,7 @@ def main():
         
     except FileNotFoundError as e:
         if run:
-            record_analysis_run(store, fail_analysis_run(run, e))
+            record_failed_analysis_run(store, run, e)
         print(f"❌ 错误: {e}")
         print()
         print("💡 请先运行以下命令抓取数据:")
@@ -401,19 +403,19 @@ def main():
         
     except ValueError as e:
         if run:
-            record_analysis_run(store, fail_analysis_run(run, e))
+            record_failed_analysis_run(store, run, e)
         print(f"❌ 错误: {e}")
         return 1
         
     except RuntimeError as e:
         if run:
-            record_analysis_run(store, fail_analysis_run(run, e))
+            record_failed_analysis_run(store, run, e)
         print(f"❌ 运行时错误: {e}")
         return 1
         
     except Exception as e:
         if run:
-            record_analysis_run(store, fail_analysis_run(run, e))
+            record_failed_analysis_run(store, run, e)
         import traceback
         traceback.print_exc()
         print(f"❌ 未知错误: {e}")

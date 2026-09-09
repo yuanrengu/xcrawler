@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from xcrawler.config import load_config
 from xcrawler.paths import ensure_private_dir, open_private_text, prepare_private_output, protect_private_file
+from xcrawler.privacy_guard import sanitize_life_events
 from xcrawler.services.evidence import build_evidence_map, render_evidence_html
 from xcrawler.storage.json_store import load_json
 from xcrawler.utils import cli_validation
@@ -241,7 +242,9 @@ def generate_evidence_sections(data, include_sensitive_events=False):
         sections.append('<div class="panel"><h2>兴趣画像证据</h2>' + "\n".join(rows) + "</div>")
 
     behavior = data.get("behavior") or {}
-    life_events = behavior.get("life_events", {})
+    life_events = sanitize_life_events(
+        behavior.get("life_events", {}), include_sensitive=include_sensitive_events
+    )
     if life_events:
         rows = []
         for category, events in life_events.items():

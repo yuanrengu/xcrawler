@@ -11,9 +11,9 @@ from xcrawler.privacy_guard import is_sensitive_event, sanitize_life_events
 from xcrawler.services.analysis_runs import (
     complete_analysis_run,
     create_analysis_run,
-    fail_analysis_run,
     partial_analysis_run,
     record_analysis_run,
+    record_failed_analysis_run,
 )
 from xcrawler.services.evidence import validate_life_event_evidence
 from xcrawler.services.llm_calls import LLMCallRecorder, ObservedLLMProvider
@@ -344,6 +344,8 @@ def main():
     raw_tweets = load_json(raw_file, default=[])
     translated_data = normalize_translated_tweets(load_json(translated_file, default=[]))
 
+    sampled_records = sample_evenly(translated_data, 200)
+    sample_ids = [item.get("tweet_id") for item in sampled_records]
     store = create_store(CACHE_DIR, backend=args.storage_backend, sqlite_path=args.sqlite_path)
     run = create_analysis_run(
         username=TARGET_USERNAME,
@@ -355,6 +357,7 @@ def main():
             "translated_records": len(translated_data),
             "life_event_sample_records": min(200, len(translated_data)),
             "life_event_sampling_strategy": "evenly_sampled_translated_records",
+            "sample_tweet_ids": sample_ids,
         },
         config={"provider": "deepseek" if AI_AVAILABLE else None},
     )
@@ -389,10 +392,10 @@ def main():
                 operation="behavior_event_detection",
             )
             print("🔍 检测生活事件（使用AI）...")
-            life_events = detect_life_events(translated_data, provider_override=event_provider)
+            life_events = detect_life_events(sampled_records, provider_override=event_provider)
             if life_events:
                 life_events = _normalize_life_events(life_events)
-                life_events = validate_life_event_evidence(life_events, translated_data, require_evidence=True)
+                life_events = validate_life_event_evidence(life_events, sampled_records, require_evidence=True)
                 life_events = sanitize_life_events(life_events, include_sensitive=args.include_sensitive_events)
                 print("✅ 事件检测完成\n")
             else:
@@ -424,7 +427,7 @@ def main():
         else:
             behavior_summary = "需要安装 openai 和 python-dotenv 才能使用AI分析功能"
     except Exception as e:
-        record_analysis_run(store, fail_analysis_run(run, e))
+        record_failed_analysis_run(store, run, e)
         print(f"❌ 行为分析失败: {e}")
         return 1
     
@@ -442,20 +445,26 @@ def main():
         "sampling": {
             "life_event_sample_records": min(200, len(translated_data)),
             "life_event_sampling_strategy": "evenly_sampled_translated_records",
+            "sample_tweet_ids": sample_ids,
         },
         "failed_steps": failed_steps,
         "behavior_summary": behavior_summary
     }
     
     result_file = os.path.join(CACHE_DIR, f"{TARGET_USERNAME}_behavior.json")
-    save_json(result_file, result)
-    run.llm_calls = LLM_METRICS["calls"]
-    run.total_tokens = LLM_METRICS["total_tokens"] or None
-    call_summary = call_recorder.summary()
-    if failed_steps:
-        record_analysis_run(store, partial_analysis_run(run, failed_batches=failed_steps))
-    else:
-        record_analysis_run(store, complete_analysis_run(run))
+    try:
+        save_json(result_file, result)
+        run.llm_calls = LLM_METRICS["calls"]
+        run.total_tokens = LLM_METRICS["total_tokens"] or None
+        call_summary = call_recorder.summary()
+        if failed_steps:
+            record_analysis_run(store, partial_analysis_run(run, failed_batches=failed_steps))
+        else:
+            record_analysis_run(store, complete_analysis_run(run))
+    except Exception as error:
+        record_failed_analysis_run(store, run, error)
+        print(f"❌ 行为分析结果保存失败: {error}")
+        return 1
     print(f"💾 行为分析已保存至: {result_file}\n")
     if call_summary["calls"]:
         print(
@@ -528,9 +537,9 @@ def main():
     print(behavior_summary)
     
     print("\n" + "=" * 60)
-    print("✅ 分析完成！")
+    print("⚠️ 行为分析部分完成，部分 AI 步骤失败" if failed_steps else "✅ 分析完成！")
     print("=" * 60 + "\n")
-    return 0
+    return 2 if failed_steps else 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
