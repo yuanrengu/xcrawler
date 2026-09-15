@@ -3,498 +3,322 @@
 [中文](https://github.com/yuanrengu/xcrawler/blob/main/README.md) | [English](https://github.com/yuanrengu/xcrawler/blob/main/README.en.md)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/yuanrengu/xcrawler/main/assets/note.png" alt="xcrawler report preview" width="800">
+  <img src="https://raw.githubusercontent.com/yuanrengu/xcrawler/main/assets/note.png" alt="xcrawler feature illustration, not an actual report screenshot" width="800">
 </p>
 
-<p align="center">
-  <a href="https://github.com/yuanrengu/xcrawler/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/yuanrengu/xcrawler/test.yml?branch=main&label=tests" alt="Tests"></a>
-  <a href="https://github.com/yuanrengu/xcrawler/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10%2B-blue.svg" alt="Python 3.10+"></a>
-</p>
+<p align="center">Feature illustration. Actual outputs are local JSON, CSV, PNG and HTML files.</p>
 
-**xcrawler** is a local-first command-line toolkit that turns a public X/Twitter timeline into evidence-linked profiles, behavioral insights, charts, and reports.
+[![Tests](https://img.shields.io/github/actions/workflow/status/yuanrengu/xcrawler/test.yml?branch=main&label=tests)](https://github.com/yuanrengu/xcrawler/actions/workflows/test.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/yuanrengu/xcrawler/blob/main/LICENSE)
 
-- **Evidence-linked analysis** — interest labels, confidence scores, and supporting tweet IDs
-- **Multilingual translation** — automatic language detection, batched translation, retries, and versioned caching
-- **Multiple analysis views** — interests, activity patterns, life-event signals, sentiment, hashtags, and mentions
-- **Privacy by default** — sensitive life-event details and evidence are hidden unless explicitly enabled
-- **Local-first outputs** — JSON, SQLite metadata, CSV, PNG, and HTML remain on your machine
-- **Defensive persistence** — atomic JSON writes, recovery backups, cross-process locks, private permissions, and path validation
-- **Unified CLI** — one `xcrawler` command with modular storage and LLM provider layers
+**xcrawler** is a command-line tool for public X/Twitter timelines: fetch posts, translate them into Chinese, analyze interests and behavior, and export local reports for review.
 
-```bash
-python3 -m pip install "xcrawler-ai[all]"
-xcrawler demo
-xcrawler fetch --user your_x_username
-xcrawler analyze interest --user your_x_username
-xcrawler report --user your_x_username
-```
+- **Interests**: labels, model confidence and tweet-ID evidence; optional vector clustering.
+- **Behavior and sentiment**: posting-time distributions, life-event detection and batch sentiment classification.
+- **Content networks**: hashtag/mention frequencies and co-occurrence statistics.
+- **Local outputs**: data, charts and reports, with incremental merging, translation caches and run records.
 
-> Use xcrawler only for public content you are authorized to access. Do not use it for harassment, stalking, doxxing, discriminatory profiling, off-platform ad targeting, or attempts to obtain non-public personal information.
+Use it for personal content reviews, authorized public-account research and content analysis. Evidence IDs make claims traceable; they do not prove that model conclusions are correct.
+
+> Results are stored locally. Translation and AI analysis send text to the configured model service. The demo makes no network or model requests. Process only public content you are authorized to access; do not use this tool for harassment, stalking, doxxing or discriminatory profiling.
+
+This document describes the current source. The inspected PyPI `0.4.2` wheel does not include the latest report privacy, sampled-evidence validation and analysis exit-code fixes described here. Use [source installation](#source-development) for those behaviors. The source also currently reports `0.4.2`, so `xcrawler --version` alone cannot identify these fixes. See the [changelog](https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md); source additions are listed under `Unreleased`.
 
 ## Contents
 
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [Recommended workflows](#recommended-workflows)
-- [CLI reference](#cli-reference)
-- [Outputs](#outputs)
-- [Reliability and data safety](#reliability-and-data-safety)
-- [Storage and observability](#storage-and-observability)
-- [Installation profiles](#installation-profiles)
-- [Project structure](#project-structure)
-- [Development and testing](#development-and-testing)
+- [No-key demo](#no-key-demo)
+- [Analyze a real account](#analyze-a-real-account)
+- [Commands and prerequisites](#commands-and-prerequisites)
+- [Updates and snapshots](#updates-and-snapshots)
+- [Outputs and evidence](#outputs-and-evidence)
+- [Configuration and storage](#configuration-and-storage)
+- [Privacy and data boundaries](#privacy-and-data-boundaries)
 - [Troubleshooting](#troubleshooting)
-- [Responsible use and privacy](#responsible-use-and-privacy)
+- [Source development](#source-development)
 - [Documentation and contributing](#documentation-and-contributing)
 
-## Quick start
+## No-key demo
 
-### No-key demo in 60 seconds
-
-```bash
-python3 -m pip install xcrawler-ai
-xcrawler demo
-```
-
-The demo creates fictional JSON data and an evidence-linked HTML report under `demo_output/`. It does not make network or LLM requests.
-
-Use a custom output directory if needed:
-
-```bash
-xcrawler demo --output ./sample-report
-```
-
-### Full installation
-
-xcrawler requires Python 3.10 or newer.
+Python 3.10+ is required. On macOS/Linux:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install "xcrawler-ai[all]"
+python -m pip install xcrawler-ai
+xcrawler demo
 ```
 
-For Windows PowerShell, activate the environment with:
+On Windows PowerShell, create the environment with `py -m venv .venv` and activate it with `.venv\Scripts\Activate.ps1`. Subsequent `python` and `xcrawler` commands are the same.
+
+Open `demo_output/xcrawler_demo_report.html` in a browser. The demo generates JSON and evidence HTML from built-in fictional data. It performs no real analysis and generates no full PNG chart set; no API key, ML or visualization extra is needed.
+
+```bash
+xcrawler demo --output ./sample-report
+xcrawler --help
+```
+
+The demo has only a few records and is not suitable as-is for interest or sentiment analysis, which require at least five texts.
+
+## Analyze a real account
+
+### Install the required extras
+
+In the activated environment, add visualization support for the fetch, professional-interest and report workflow:
+
+```bash
+python -m pip install "xcrawler-ai[viz]"
+```
+
+| Installation | Purpose |
+|---|---|
+| `xcrawler-ai` | CLI, fetching, translation, AI analysis, CSV and demo |
+| `xcrawler-ai[viz]` | Adds plotting required for reports, network and sentiment commands |
+| `xcrawler-ai[ml]` | Adds vector-clustering dependencies |
+| `xcrawler-ai[all]` | Adds both ML and visualization dependencies |
+
+ML dependencies are large and the first clustering run may download a model. Without ML, clustering is skipped after successful full fetching and translation. Professional interest analysis (`analyze interest`) does not require ML.
+
+### Configure credentials
+
+Fetching requires an X API bearer token. Translation and default AI analysis require a DeepSeek or compatible-service key. Real requests may incur charges; access limits depend on your service account.
+
+On macOS/Linux, replace the placeholders and set these variables in the current terminal:
+
+```bash
+export X_BEARER_TOKEN="your_x_bearer_token"
+export DEEPSEEK_API_KEY="your_deepseek_api_key"
+export TARGET_USERNAME="your_x_username"
+```
+
+On Windows PowerShell:
 
 ```powershell
-.venv\Scripts\Activate.ps1
+$env:X_BEARER_TOKEN="your_x_bearer_token"
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key"
+$env:TARGET_USERNAME="your_x_username"
 ```
 
-Create a `.env` file in the directory where you run xcrawler:
+Credential entry may remain in shell history. Configure credentials in your own trusted environment; never commit keys, `.env` or analysis data.
+
+**Current `.env` limitation:** the code calls `load_dotenv()` without a path. Discovery depends on the package location and does not reliably load an arbitrary working directory's `.env`. Prefer explicit environment variables for an independent installation. Source-root `.env` usage and precedence are covered in the [configuration guide](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md).
+
+### Run the workflow
+
+Run each command separately in the same configured terminal:
 
 ```bash
-touch .env
+# Start with a small page limit; inspect output and exit status after each command
+xcrawler fetch --pages 3
+
+# Analyze existing translations
+xcrawler analyze interest --limit 300
+xcrawler analyze behavior
+
+# Render existing results; this does not rerun analysis
+xcrawler report
 ```
 
-At minimum, configure:
+If more pages remain at the fetch limit, archive mode saves partial data and exits with `2`. Fetch more, or explicitly accept the current sample range before analyzing it. Interest analysis requires at least five usable texts. Fewer than ten translated records also causes clustering to be skipped after a complete fetch.
 
-```dotenv
-X_BEARER_TOKEN=your_x_bearer_token
-DEEPSEEK_API_KEY=your_deepseek_api_key
-TARGET_USERNAME=your_x_username
-```
+The report defaults to `cache/charts/{username}_report.html`. If you use `--user`, supply the same account to subsequent commands: a command-line override does not change defaults for the next invocation.
 
-Then run the primary workflow:
+## Commands and prerequisites
 
-```bash
-xcrawler fetch --user your_x_username
-xcrawler analyze interest --user your_x_username
-xcrawler report --user your_x_username
-```
+Inputs below are local files for the selected account. Use `--cache-dir` to choose their directory; the demo instead uses `--output`.
 
-## Configuration
-
-Copy [`.env.example`](https://github.com/yuanrengu/xcrawler/blob/main/.env.example) or define the following variables yourself.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `X_BEARER_TOKEN` | — | X API bearer token used to fetch public posts |
-| `DEEPSEEK_API_KEY` | — | DeepSeek/OpenAI-compatible key used for translation and AI analysis |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek-compatible API base URL |
-| `LLM_MODEL` | `deepseek-chat` | Default model for translation and analysis |
-| `OPENAI_API_KEY` | empty | Optional fallback for professional interest analysis |
-| `OPENAI_BASE_URL` | `https://api.openai.com` | Optional OpenAI-compatible base URL |
-| `TARGET_USERNAME` | `MiracleHe` | Target X username, without `@` |
-| `TARGET_DATE` | `2024-01-01` | Oldest desired date for incremental history fetching |
-| `TIMEZONE_OFFSET` | `8` | UTC offset used by behavior and visualization reports |
-| `CACHE_DIR` | `cache` | Local cache and output directory |
-| `STORAGE_BACKEND` | `json` | Run-metadata backend: `json` or `sqlite` |
-| `SQLITE_PATH` | `cache/xcrawler.db` | Optional SQLite metadata database path |
-| `LLM_PRICING_JSON` | unset | Optional per-model prices for local cost estimates |
-
-Example optional pricing configuration:
-
-```dotenv
-LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
-```
-
-Prices are intentionally not built into the project because provider pricing changes. Always use current provider pricing when populating this field.
-
-Command-line options such as `--user`, `--cache-dir`, `--model`, `--storage`, and `--sqlite-path` override the corresponding defaults for that invocation.
-
-See [CONFIG_GUIDE.md](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md) for more configuration examples.
-
-## Recommended workflows
-
-### First analysis
-
-```bash
-# Fetch public posts, translate them, and run clustering when ML extras are installed
-xcrawler fetch --user your_x_username
-
-# Build an evidence-linked interest profile
-xcrawler analyze interest --user your_x_username
-
-# Analyze time patterns and non-sensitive life-event signals
-xcrawler analyze behavior --user your_x_username
-
-# Generate charts and an HTML report
-xcrawler report --user your_x_username
-```
-
-### Low-quota or routine updates
-
-```bash
-# Forward and backward fetching share this HTTP request budget
-xcrawler fetch-more --user your_x_username --pages 5 --target-date 2024-01-01
-
-# Translate only records that are missing or stale
-xcrawler translate --user your_x_username
-
-# Refresh downstream analysis and reports
-xcrawler analyze interest --user your_x_username
-xcrawler report --user your_x_username
-```
-
-The compatibility helper `./refetch_data.sh -i` remains available, but the unified CLI is the recommended interface.
-
-### Analyze existing local data only
-
-```bash
-xcrawler analyze interest --user your_x_username --limit 200
-xcrawler analyze behavior --user your_x_username
-xcrawler analyze sentiment --user your_x_username --top 10
-xcrawler analyze network --user your_x_username --top 30
-xcrawler report --user your_x_username
-xcrawler export csv --user your_x_username
-```
-
-### Explicit snapshot replacement
-
-Full fetches use archive/merge behavior by default. Use snapshot replacement only when that is intentionally required:
-
-```bash
-xcrawler fetch --user your_x_username --replace
-```
-
-Snapshot mode replaces the local raw and translated snapshot only after pagination completes and all required translations succeed. Partial results never overwrite a known-good snapshot.
-
-## CLI reference
-
-| Command | Purpose |
-|---|---|
-| `xcrawler demo` | Generate a local report from fictional data without API keys |
-| `xcrawler fetch` | Fetch public posts, translate them, and optionally cluster them |
-| `xcrawler fetch-more` | Incrementally fetch newer posts and older history |
-| `xcrawler translate` | Synchronize or force-retranslate cached posts |
-| `xcrawler analyze interest` | Build a professional evidence-linked interest profile |
-| `xcrawler analyze behavior` | Analyze activity patterns and life-event signals |
-| `xcrawler analyze sentiment` | Analyze sentiment distribution and trends |
-| `xcrawler analyze network` | Analyze hashtag and mention signals |
-| `xcrawler report` | Generate PNG charts and, by default, an HTML report |
-| `xcrawler export csv` | Export local data to spreadsheet-safe CSV files |
-
-### Common examples
-
-```bash
-# Limit fetch pages and downstream analysis size
-xcrawler fetch --user alice --pages 3 --analysis-limit 200
-
-# Fetch without translation
-xcrawler fetch --user alice --no-translate
-
-# Force retranslation; the primary file changes only if all requested items succeed
-xcrawler translate --user alice --force
-
-# Choose a model and metadata backend for an analysis run
-xcrawler analyze interest --user alice --model deepseek-chat --storage sqlite
-
-# Store SQLite metadata at an explicit path
-xcrawler analyze sentiment --user alice --storage sqlite --sqlite-path state/xcrawler.db
-
-# PNG charts only; omit the HTML report
-xcrawler report --user alice --format png
-
-# Include sensitive event evidence only after an explicit privacy decision
-xcrawler report --user alice --include-sensitive-events
-
-# Export only translations
-xcrawler export csv --user alice --type translations --output ./exports
-
-# Show dispatch, retry, and storage diagnostics without printing secrets
-xcrawler fetch --user alice --verbose
-```
-
-Run `xcrawler <command> --help` for every option. Numeric CLI values are validated, including positive page/batch/limit values, non-negative intervals, and temperatures between 0 and 2.
-
-Legacy script entry points such as `main.py`, `fetch_more_history.py`, and `analyze_pro.py` remain available for compatibility, but new workflows should use `xcrawler`.
-
-## Outputs
-
-The default output root is `cache/`.
-
-| Path | Contents |
-|---|---|
-| `cache/{username}_raw_tweets.json` | Validated public post records |
-| `cache/{username}_translated.json` | Original text, translation, language, timestamps, and fingerprints |
-| `cache/{username}_interest_profile.json` | Interest labels, confidence, keywords, and evidence tweet IDs |
-| `cache/{username}_behavior.json` | Activity patterns and privacy-filtered life-event signals |
-| `cache/{username}_sentiment.json` | Sentiment results; failed/unparseable items remain `unknown` |
-| `cache/{username}_network.json` | Hashtag and mention analysis |
-| `cache/{username}_fetch_status.json` | Incremental request, retry, completion, and stop-reason state |
-| `cache/translation_cache.json` | Versioned translation cache keyed by provider/model/prompt context |
-| `cache/analysis_runs.json` | Analysis-run metadata when JSON storage is selected |
-| `cache/llm_calls.json` | Per-call LLM metadata when JSON storage is selected |
-| `cache/xcrawler.db` | Structured run and LLM-call metadata when SQLite is selected |
-
-Reports and charts default to `cache/charts/`:
-
-- `{username}_hourly.png`
-- `{username}_weekday.png`
-- `{username}_language.png`
-- `{username}_interests.png`
-- `{username}_hashtags.png`
-- `{username}_mentions.png`
-- `{username}_sentiment.png`
-- `{username}_sentiment_pie.png`
-- `{username}_report.html`
-
-CSV exports default to `cache/csv/`:
-
-- `{username}_tweets.csv`
-- `{username}_translations.csv`
-- `{username}_interests.csv`
-
-CSV fields with spreadsheet formula prefixes are escaped, and tweet IDs are exported as text to prevent numeric rounding in spreadsheet applications.
-
-## Reliability and data safety
-
-### Fetch semantics
-
-- Full fetches default to **archive mode**: records merge by tweet ID, so a remote deletion does not silently delete local history.
-- `xcrawler fetch --replace` enables **snapshot mode** and commits raw and translated files together only after a complete fetch and successful translation.
-- A page limit reached while another `next_token` exists is partial, not complete.
-- X API HTTP 200 responses that contain errors, malformed pagination metadata, or repeated pagination tokens are rejected.
-- Forward and backward incremental phases persist independently, so a later failure does not discard a successfully saved earlier phase.
-- `fetch-more --pages` is a shared HTTP request budget across forward fetching, backward fetching, and retries.
-- Incremental exit codes are `0` for complete success, `1` for failure, and `2` for safely persisted but incomplete progress.
-
-### Translation integrity
-
-Translation fingerprints also include a hash of the normalized API endpoint (scheme, host, port, and path; credentials, query parameters, and fragments are excluded). Switching endpoints triggers retranslation; default ports and trailing slashes do not change the identity. Existing cache entries without endpoint provenance are preserved but not reused, and old records are revalidated on the next sync. The first run after upgrading may require additional model calls.
-
-- Translation records include source-content and configuration fingerprints. Changed source text or model/prompt context triggers retranslation.
-- The translation cache is isolated by provider, model, target language, and prompt version.
-- Fetch and normal translation sync persist successful results to the cache after each batch. Restart with the same configuration to reuse completed work for records still needing translation; an unfinished batch may need retrying.
-- Forced retranslation does not support resume. Running again with `--force` bypasses cache and retranslates from the beginning, potentially repeating costs. Omitting `--force` performs normal sync: valid old records are skipped, and newer cached translations are not automatically applied to them. Force-mode checkpoints are reusable cache entries, not a resumable task record.
-- Cache persistence errors stop the workflow without retrying the model call. Checkpoints do not commit partial raw/translated snapshots in `--replace` mode or a partial translated file in force mode.
-- Legacy records without a configuration fingerprint, or records with blank translations, are retranslated during sync. Old translations remain until their replacements succeed; the initial migration may require additional model calls.
-- Forced retranslation is all-or-nothing for the primary translated file.
-- Partially failed sentiment analysis saves usable results, marks failed/unparseable batches `unknown`, and exits with code `2`. If every batch fails, it exits with `1` and preserves existing results and charts. Complete success exits with `0`.
-- Behavior analysis exits with `2` when time statistics are available but event detection or the summary fails, `1` on execution or persistence failure, and `0` on complete success.
-- Interest and life-event evidence must refer to records actually included in the current prompt. Sample IDs are stored in result `sampling.sample_tweet_ids` and run `input_range.sample_tweet_ids`.
-- Reports reapply privacy filtering on every generation, including previously saved sensitive data and legacy events without sensitivity flags. Sensitive descriptions, original text, translations, and evidence IDs are hidden unless `--include-sensitive-events` is explicitly supplied.
-
-### Local persistence security
-
-- JSON writes use temporary files, `fsync`, atomic replacement, and `.bak` recovery files.
-- Managed JSON reads, writes, recovery, appends, and multi-file transactions use cross-process advisory locks with a five-second default timeout.
-- `append_json_record()` holds one lock across its complete read-modify-write sequence; multi-file transactions acquire locks in canonical path order to avoid deadlocks.
-- Persistent `.lock` files are safe to leave in place. The operating system releases the actual lock when a process exits or crashes.
-- On POSIX systems, new cache/output directories use `0700`; managed JSON, backup, lock, SQLite, CSV, HTML, and PNG files use `0600`.
-- Existing parent directory permissions are never changed automatically. xcrawler warns when they appear too broad.
-- Explicitly symlinked cache roots are supported, while managed files, backups, lock files, SQLite sidecars, path traversal, and unsafe link replacement are rejected.
-- Windows permission enforcement is best-effort and should be paired with appropriate filesystem ACLs.
-
-Archive updates and shared cache saves re-read and merge the latest disk data under one lock. Network requests and model calls run outside the lock; an entire workflow is not one transaction. Explicit snapshot replacement still replaces the selected data.
-
-Translation cache writes overwrite existing keys only for translations generated by the current process since its last successful save. Unchanged entries from an older snapshot cannot revert another process's correction. If both processes generate a new value for the same key, the last commit wins. Snapshot replacement checks for an optional translated file while holding both file locks.
-
-## Storage and observability
-
-JSON is the default metadata backend and is appropriate for personal or low-frequency use:
-
-```dotenv
-STORAGE_BACKEND=json
-```
-
-For structured run and LLM-call metadata, enable SQLite:
-
-```dotenv
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=cache/xcrawler.db
-```
-
-Or select it for one invocation:
-
-```bash
-xcrawler analyze interest --user alice --storage sqlite
-```
-
-SQLite enables WAL mode, transactions, a busy timeout, structured `analysis_runs` and `llm_calls` tables, and query indexes. Raw posts, translations, charts, and reports remain ordinary local files. JSON and SQLite metadata are not migrated automatically when switching backends.
-
-Analysis and translation workflows record operational metadata such as provider, model, timestamps, status, latency, token counts, failed batches, and optional cost estimates. Prompts and model response bodies are not stored in the metadata database.
-
-## Installation profiles
-
-| Profile | PyPI install | Source install | Includes |
+| Command | Input/purpose | API configuration | Optional dependency |
 |---|---|---|---|
-| Base | `pip install xcrawler-ai` | `pip install -e .` | CLI, fetching, translation, export, demo |
-| ML | `pip install "xcrawler-ai[ml]"` | `pip install -e ".[ml]"` | Embeddings and K-Means clustering |
-| Visualization | `pip install "xcrawler-ai[viz]"` | `pip install -e ".[viz]"` | Matplotlib charts and reports |
-| All | `pip install "xcrawler-ai[all]"` | `pip install -e ".[all]"` | ML and visualization features |
-| Test | `pip install "xcrawler-ai[test]"` | `pip install -e ".[test]"` | pytest, coverage, Hypothesis |
-| Development | `pip install "xcrawler-ai[dev]"` | `pip install -e ".[dev]"` | Tests, Ruff, mypy, build, Twine |
+| `demo` | Fictional data → evidence HTML | None | None |
+| `fetch` | X timeline → raw, translations; clustering when applicable | X + DeepSeek-compatible configuration | `ml` for clustering |
+| `fetch --no-translate` | Fetch raw only; skip translation and analysis | X | None |
+| `fetch-more` | Update raw; can also start fetching without prior data | X | None |
+| `translate` | Raw → missing or stale translations | DeepSeek-compatible configuration when translation calls are needed | None |
+| `analyze interest` | Translations → professional interests; at least five texts | DeepSeek, or OpenAI when the DeepSeek key is empty | None |
+| `analyze behavior` | Raw + translations → time statistics, events and summary | DeepSeek-compatible configuration | None |
+| `analyze sentiment` | Translations → sentiment; at least five texts | DeepSeek-compatible configuration | `viz` |
+| `analyze network` | Raw → tag/mention frequencies, co-occurrence and bar charts | None | `viz` |
+| `report` | Raw required; adds available translations, interests and events | None | `viz` |
+| `export csv` | Existing raw, translations or interest profile | None | None |
 
-If the ML extra is absent, `xcrawler fetch` still saves fetched and translated data, then skips clustering with an actionable message. Visualization commands require the `viz` or `all` profile.
-
-## Project structure
-
-```text
-xcrawler/
-├── xcrawler/
-│   ├── cli.py                    # Unified command-line interface
-│   ├── config.py                 # Environment configuration
-│   ├── paths.py                  # Safe paths and private permissions
-│   ├── privacy_guard.py          # Sensitive-evidence redaction
-│   ├── clients/                  # X API and LLM clients
-│   ├── llm/                      # LLM provider abstraction
-│   ├── services/                 # Fetch, translation, evidence, telemetry
-│   ├── storage/
-│   │   ├── base.py               # Storage contract
-│   │   ├── factory.py            # Backend selection
-│   │   ├── file_lock.py          # Cross-platform advisory locks
-│   │   ├── json_store.py         # Atomic JSON persistence and recovery
-│   │   └── sqlite_store.py       # Structured metadata storage
-│   └── utils/                    # Validation, text, time, logging
-├── main.py                       # Fetch, translate, and cluster workflow
-├── fetch_more_history.py         # Incremental forward/backward fetching
-├── translate_sync.py             # Incremental and forced translation
-├── analyze_pro.py                # Interest profile analysis
-├── analyze_behavior.py           # Behavior and life-event analysis
-├── analyze_sentiment.py          # Sentiment analysis
-├── analyze_network.py            # Hashtag and mention analysis
-├── visualize.py                  # Charts and HTML reports
-├── export_csv.py                 # Spreadsheet-safe CSV export
-├── tests/                        # Unit, integration, property, and concurrency tests
-├── pyproject.toml
-└── .env.example
+```bash
+xcrawler fetch --user alice --pages 10 --batch-size 10 --analysis-limit 500
+xcrawler analyze interest --user alice --limit 100 --temperature 0
+xcrawler analyze network --user alice --top 20
+xcrawler analyze sentiment --user alice --top 10
+xcrawler report --user alice --format png --output ./charts
+xcrawler export csv --user alice --type translations --output ./csv
+xcrawler fetch --help
 ```
 
-## Development and testing
+Leaf commands support `--verbose`. Not all commands support `--model` or storage options; check their `--help`. Record limits are not token budgets, so long texts can still exceed model context limits.
+
+## Updates and snapshots
+
+### Routine updates
+
+```bash
+xcrawler fetch-more --pages 10 --target-date 2024-01-01
+xcrawler translate
+xcrawler analyze interest
+xcrawler analyze behavior
+xcrawler report
+```
+
+Check each result and rerun the analyses you need. `fetch-more` only updates raw data; skipping translation or analysis can leave old conclusions in a newly rendered report. Its `--pages` budget is shared across forward fetching, backward fetching and retries; a request is not guaranteed to return 100 posts.
+
+Neither a target date nor pagination completion guarantees all account history. Available data depends on API scope, permissions, deleted content and request budgets.
+
+### Merge versus replacement
+
+- `fetch` merges by tweet ID by default. Remote deletion does not automatically remove local history.
+- `fetch --replace` explicitly replaces a snapshot: raw and translated files are committed after complete pagination and successful translation. Incomplete pagination does not overwrite them.
+- `fetch --replace --no-translate` performs no translation. After a complete fetch, it replaces raw and removes existing translated records whose IDs are absent from the new snapshot; it does not create a missing translation file.
+- The source wrapper `./refetch_data.sh` dispatches to `fetch --replace`; `./refetch_data.sh -i` dispatches to `fetch-more`. It does not add `cache_backup/` backups, install dependencies or validate data. Prefer the CLI for new workflows.
+
+### Exit status
+
+| Command/situation | Exit code and result |
+|---|---|
+| `fetch`, complete fetch and successful translation | `0`; missing ML or fewer than ten translations can also skip clustering and return `0` |
+| `fetch`, page limit with more pages remaining | `2`; archive saves partial data, replacement refuses overwrite |
+| `fetch`, partial translation failure | `1`; archive can retain successful work, replacement preserves the old snapshot |
+| `fetch-more` | Complete `0`, failure `1`, safely saved but incomplete range `2` |
+| `analyze interest` | Success `0`, analysis or persistence failure `1` |
+| `analyze behavior` | Complete `0`; useful time statistics but failed events/summary `2`; execution or persistence failure `1` |
+| `analyze sentiment` | Complete `0`, partial batches `2`; all batches fail `1`, preserving old results and charts |
+| `translate` | Complete/nothing to update `0`; unresolved translation failures `1` |
+
+A file's existence does not prove a successful run. CSV export may exit normally even when no input was available; inspect messages and actual artifacts. See the [fetch guide](https://github.com/yuanrengu/xcrawler/blob/main/FETCH_MORE_DATA.md) for recovery details.
+
+## Outputs and evidence
+
+Paths are relative to the working directory; change the cache root with `CACHE_DIR` or `--cache-dir`.
+
+| Default path | Contents |
+|---|---|
+| `cache/{username}_raw_tweets.json` | Preserved raw tweet records |
+| `cache/{username}_translated.json` | Cleaned source text, Chinese translation, ID, timestamp and fingerprints |
+| `cache/{username}_interest_profile.json` | Professional interest profile used by reports and interest CSV |
+| `cache/{username}_profile.json` | Fetched account information |
+| `cache/{username}_analysis.json` | Optional clustering and summary, distinct from the professional profile |
+| `cache/{username}_behavior.json` | Time statistics, life events and summary |
+| `cache/{username}_sentiment.json` | Labels, distribution and failed batch count |
+| `cache/{username}_network.json` | Hashtag, mention and co-occurrence statistics |
+| `cache/{username}_fetch_status.json` | Incremental range and phase status |
+| `cache/charts/` | PNG and HTML; supported commands accept `--output` |
+| `cache/csv/` | CSV; change with `export csv --output` |
+| `cache/analysis_runs.json`, `cache/llm_calls.json` | Run/call metadata; replaced by a database in SQLite mode |
+
+Reports contain hourly, weekday, language and professional-interest charts as inputs permit, plus existing interest/event evidence. Network and sentiment charts are not automatically embedded. HTML references PNG files relatively; copy those images with the HTML when sharing.
+
+This is a **fictional interest-item excerpt**, not a complete result file:
+
+```json
+{
+  "tag": "Open-source tools",
+  "level": "core",
+  "confidence": 0.8,
+  "keywords": ["Python", "open source"],
+  "evidence_count": 2,
+  "evidence_tweet_ids": ["1740000000000000001", "1740000000000000002"]
+}
+```
+
+`evidence_count` counts valid evidence IDs. `confidence` is model judgment, not a calibrated statistical probability. Current interest/event analysis accepts only IDs from actual prompt samples and records `sampling.sample_tweet_ids`; valid IDs do not establish semantic support.
+
+Translation `original` may have URLs and @mentions removed and whitespace normalized. Use raw data for the preserved source text. Text shorter than six characters after cleaning is skipped for translation, so raw and translated counts can differ.
+
+CSV cells with dangerous formula prefixes receive an apostrophe; long tweet IDs are protected as text. Other CSV readers may display the apostrophe. Failed sentiment batches remain `unknown`, not `neutral`.
+
+## Configuration and storage
+
+- Defaults: `TARGET_USERNAME=MiracleHe`, `CACHE_DIR=cache`, `TIMEZONE_OFFSET=8`, `LLM_MODEL=deepseek-chat`. Set your intended account before real requests.
+- Professional interest analysis prefers a nonempty `DEEPSEEK_API_KEY`; it selects OpenAI only when that key is empty. This is not failover after a failed request. Set a model supported by the selected OpenAI service.
+- Translation batch size defaults to ten. Batching and caching reduce repeated overhead but do not guarantee a fixed cost reduction.
+- Interest analysis defaults to at most 300 records, life-event detection to 200 and post-fetch clustering to 1,000. Sampling is evenly spaced over record order, not necessarily evenly distributed over time intervals.
+- `STORAGE_BACKEND=sqlite` changes only run/call metadata storage; tweets, translations, caches and reports remain files. Backends do not migrate automatically.
+
+```bash
+xcrawler analyze interest --storage sqlite
+xcrawler analyze sentiment --storage sqlite --sqlite-path state/xcrawler.db
+```
+
+See the [configuration guide](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md) for all variables, providers, cache migration, retranslation and locking details.
+
+## Privacy and data boundaries
+
+Fetching excludes retweets and replies by default; it does not represent all user interactions.
+
+Behavior analysis hides descriptions and evidence IDs of events identified as sensitive by default. Reports apply filtering again, including to legacy events. Detection uses categories, flags and keywords; it is not complete anonymization. Interest and ordinary-event evidence may expose original text or personal information. Review reports before sharing.
+
+To display sensitive events intentionally, enable the option both when producing behavior data and when rendering the report. A report flag cannot recover details already removed from saved results:
+
+```bash
+xcrawler analyze behavior --include-sensitive-events
+xcrawler report --include-sensitive-events
+```
+
+Raw data, translations and model inputs are not automatically anonymized by report filtering. Evidence identifies a cited source; models can misinterpret it. Posting timestamps do not prove sleep habits or location.
+
+New POSIX directories default to `0700`, managed files to `0600`; existing parent permissions are not automatically changed. Use appropriate filesystem access controls on Windows. JSON updates use locks, atomic writes and `.bak` recovery, but a whole fetch/analysis workflow is not one transaction.
+
+Before cleanup, stop related processes and inspect custom outputs, `.bak` files, shared translation/embedding caches, metadata, SQLite databases and old backups. Deleting `{username}_*.json` does not remove all associated content; shared records cannot safely be cleared by username filenames alone. Do not delete `.lock` files while processes are running.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| `xcrawler` not found | Activate the installation environment; inspect `python -m pip show xcrawler-ai` |
+| `.env` ignored/missing key | Use explicit environment variables; check discovery location and existing environment precedence |
+| Missing input | Align `--user` and `--cache-dir`; fetch, translate and analyze first. Analysis commands are not read-only viewers |
+| Missing matplotlib | `python -m pip install "xcrawler-ai[viz]"` |
+| Clustering skipped | Check ML installation, at least ten translations, and fetch completeness |
+| Too few interest/sentiment inputs | At least five usable texts; interest `--limit` must also allow enough inputs |
+| HTTP 401/403 | Check the token and account access; retries do not grant permissions |
+| HTTP 429 | Reduce budgets and check service quotas; the program stops beyond its wait limit rather than waiting forever |
+| Exit code `2` | Inspect output and, for incremental fetches, the fetch-status file for unfinished scope |
+| Translation/model error | Check key, endpoint, model and input size; cache migration can also increase calls |
+| Old report conclusions | `report` does not rerun analysis; refresh needed analyses after translation |
+| Missing images after sharing | Copy the HTML together with its referenced PNG files |
+
+## Source development
+
+This is an alternative to PyPI installation and requires Git:
 
 ```bash
 git clone https://github.com/yuanrengu/xcrawler.git
 cd xcrawler
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -e ".[dev]"
-
+python -m pip install -e ".[dev]"
+# Add plotting if needed; clustering is optional via .[ml] or .[all]
+python -m pip install -e ".[viz]"
 ruff check .
 mypy xcrawler
-python3 -m pytest
-python3 -m build
+python -m pytest
 ```
 
-The test suite covers text processing, translation contracts, CLI validation, privacy redaction, fetch transactions, pagination properties, JSON recovery and concurrency, SQLite compatibility, packaging, and coverage gates. CI runs pytest across Python 3.10–3.14 in addition to quality, coverage, and package jobs.
+Use the Windows activation command above where applicable. Editable installation runs the current source; see [CONTRIBUTING](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md).
 
-## Troubleshooting
-
-### Missing optional dependency
-
-Install the feature profile required by the command:
-
-```bash
-python3 -m pip install "xcrawler-ai[all]"
+```text
+xcrawler/       Configuration, CLI, clients, services, storage and utilities
+main.py         Fetch/translation/clustering compatibility entry point
+analyze_*.py    Analysis implementations and legacy script entry points
+tests/          Regression tests split by responsibility
+.github/        CI, dependency updates and PR template
 ```
-
-For source development, use `pip install -e ".[ml]"`, `pip install -e ".[viz]"`, or `pip install -e ".[all]"`.
-
-### No cached input data
-
-Confirm that `TARGET_USERNAME`, `--user`, and `--cache-dir` refer to the same user and directory used during fetching. Start with:
-
-```bash
-xcrawler fetch --user your_x_username --pages 1
-```
-
-### X API rate limits or HTTP 429
-
-Begin with a small request budget and prefer incremental updates:
-
-```bash
-xcrawler fetch-more --user your_x_username --pages 3
-```
-
-The request engine uses bounded retries and respects rate-limit reset information when available.
-
-### Translation failure
-
-Check `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `LLM_MODEL`, then rerun with diagnostics:
-
-```bash
-xcrawler translate --user your_x_username --verbose
-```
-
-### Partial exit code 2
-
-Exit code `2` means progress was safely persisted but the requested fetch range is incomplete. Automation should not treat it as complete success; rerun with an appropriate request budget.
-
-### Directory permission warning
-
-xcrawler does not modify a pre-existing parent directory. After confirming it should be private, tighten it manually on POSIX:
-
-```bash
-chmod 700 cache
-```
-
-## Responsible use and privacy
-
-xcrawler is intended for learning, research, personal content review, and authorized social-media analysis of public content.
-
-Privacy defaults include:
-
-- sensitive life-event details and supporting tweet IDs are hidden by default;
-- HTML reports hide sensitive-event source text unless `--include-sensitive-events` is passed;
-- email addresses, phone numbers, and address-like evidence receive basic redaction;
-- generated profiles are probabilistic summaries, not verified facts;
-- local files use private permissions where the operating system supports them.
-
-Review generated JSON, HTML, and CSV before sharing. Public source material can still contain personal or sensitive information even when automated redaction is enabled.
-
-To remove local outputs:
-
-```bash
-rm -rf cache/
-rm -rf cache_backup/
-```
-
-Report security or privacy vulnerabilities privately according to [SECURITY.md](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md). Do not publish exploitable details in a public issue.
 
 ## Documentation and contributing
 
-- [Quick start](https://github.com/yuanrengu/xcrawler/blob/main/QUICK_START.md)
-- [Configuration guide](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md)
-- [Incremental fetching](https://github.com/yuanrengu/xcrawler/blob/main/FETCH_MORE_DATA.md)
-- [Behavior analysis](https://github.com/yuanrengu/xcrawler/blob/main/BEHAVIOR_ANALYSIS.md)
-- [Changelog](https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md)
-- [Contributing guide](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md)
-- [Security policy](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md)
-- [Release checklist](https://github.com/yuanrengu/xcrawler/blob/main/RELEASE_CHECKLIST.md)
+Detailed topic guides below are in Chinese; the English README covers the primary workflows and limitations.
 
-Issues and pull requests are welcome. Please read the contributing and security guidance before proposing changes that affect persistence, privacy defaults, or generated evidence.
+- [Quick start](https://github.com/yuanrengu/xcrawler/blob/main/QUICK_START.md): minimal workflows.
+- [Configuration](https://github.com/yuanrengu/xcrawler/blob/main/CONFIG_GUIDE.md): environment, providers, storage and translation recovery.
+- [Incremental fetching](https://github.com/yuanrengu/xcrawler/blob/main/FETCH_MORE_DATA.md): budgets, replacement and status.
+- [Behavior analysis](https://github.com/yuanrengu/xcrawler/blob/main/BEHAVIOR_ANALYSIS.md): sampling, privacy and interpretation.
+- [Changelog](https://github.com/yuanrengu/xcrawler/blob/main/CHANGELOG.md) and [release checklist](https://github.com/yuanrengu/xcrawler/blob/main/RELEASE_CHECKLIST.md).
+- [Contributing](https://github.com/yuanrengu/xcrawler/blob/main/CONTRIBUTING.md): associate an issue, then submit a branch and PR.
+- [Security](https://github.com/yuanrengu/xcrawler/blob/main/SECURITY.md): report credential/privacy issues privately as directed.
 
-## License
-
-[MIT](https://github.com/yuanrengu/xcrawler/blob/main/LICENSE)
+Licensed under the [MIT License](https://github.com/yuanrengu/xcrawler/blob/main/LICENSE). Follow service rules and applicable laws; do not use the tool for unauthorized profiling or off-platform advertising targeting.
