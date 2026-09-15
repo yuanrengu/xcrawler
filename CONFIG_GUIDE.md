@@ -1,216 +1,129 @@
-# 配置指南
+# 配置、存储与翻译恢复
 
-## 📌 统一配置方案
+本文对应当前源码。安装与主要流程见 [README](https://github.com/yuanrengu/xcrawler/blob/main/README.md)。
 
-所有脚本现在都从 `.env` 文件读取 `TARGET_USERNAME`，提高了复用性。推荐使用统一 CLI 入口 `xcrawler`，旧脚本入口仍保留兼容。
+## 配置来源与优先级
 
----
-
-## 🔧 配置方法
-
-### 方法 1：修改 `.env` 文件（推荐）
-
-编辑 `.env` 文件，修改目标用户名：
+当前代码在导入 `xcrawler.config` 时调用无参数 `load_dotenv()`。普通脚本的查找起点与调用模块位置有关；独立安装时不能保证读取当前工作目录的 `.env`。建议先使用显式环境变量：
 
 ```bash
-# .env
-TARGET_USERNAME=MiracleHe  # ← 改成你要分析的用户名
+# macOS/Linux，替换占位符，在运行命令的同一终端设置
+export X_BEARER_TOKEN="your_x_bearer_token"
+export DEEPSEEK_API_KEY="your_deepseek_api_key"
+export TARGET_USERNAME="your_x_username"
 ```
 
-**优点：**
-- ✅ 一次配置，所有脚本生效
-- ✅ 配置持久化
-- ✅ 适合长期使用同一个用户
+```powershell
+# Windows PowerShell
+$env:X_BEARER_TOKEN="your_x_bearer_token"
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key"
+$env:TARGET_USERNAME="your_x_username"
+```
 
----
+密钥可能留在终端历史中，请使用自己的可信环境。不要提交密钥、`.env` 或分析数据。
 
-### 方法 2：命令行参数（推荐）
-
-使用统一 CLI 的 `--user` 参数临时指定用户，无需修改 `.env`：
+源码检出并通过 `pip install -e .` 安装时，可在源码根目录复制模板：
 
 ```bash
-xcrawler fetch -u another_user
-xcrawler analyze interest -u another_user
-xcrawler analyze behavior -u another_user
+cp .env.example .env
+# 使用编辑器填写 .env；不要直接执行未经检查的配置文件
 ```
 
-**优点：**
-- ✅ 不修改文件
-- ✅ 适合临时切换用户
-- ✅ 所有命令统一入口
+非空占位符不是有效密钥；不使用的可选配置应留空或删除。当前没有 `--env-file` 参数。修改配置后重新启动命令；不要假定已导入的模块会自动重新加载。
 
----
+通常优先级为：命令支持的 CLI 参数 > 进程环境变量 > 被发现的 `.env` > 代码默认值。现有环境变量不会被 `.env` 自动覆盖；配置加载和校验发生在部分 CLI 覆盖之前，因此非法环境值仍应先修正。
 
-## 🗄️ 运行元数据存储
+## 变量表
 
-默认使用 JSON，不需要额外配置：
+| 变量 | 默认值 | 用途 |
+|---|---|---|
+| `X_BEARER_TOKEN` | 无 | 抓取公开推文 |
+| `DEEPSEEK_API_KEY` | 无 | 翻译及默认 AI 分析 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek 兼容服务地址 |
+| `OPENAI_API_KEY` | 无 | 仅专业兴趣分析的备选 Provider |
+| `OPENAI_BASE_URL` | `https://api.openai.com` | 未设置变量时的 OpenAI 地址；显式空字符串不会使用该默认值 |
+| `LLM_MODEL` | `deepseek-chat` | 翻译及 AI 分析模型 |
+| `TARGET_USERNAME` | `MiracleHe` | 默认目标账号，建议不带 `@` |
+| `TARGET_DATE` | `2024-01-01` | 增量历史目标日期，格式 `YYYY-MM-DD` |
+| `TIMEZONE_OFFSET` | `8` | 固定 UTC 偏移小时数；不自动处理夏令时 |
+| `CACHE_DIR` | `cache` | 相对于运行目录的缓存位置 |
+| `STORAGE_BACKEND` | `json` | `json` 或 `sqlite`，仅运行元数据 |
+| `SQLITE_PATH` | 未指定时 `<cache-dir>/xcrawler.db` | 数据库位置 |
+| `LLM_PRICING_JSON` | 未配置 | 每百万 input/output token 的 USD 单价，用于估算 |
 
 ```bash
-STORAGE_BACKEND=json
+xcrawler fetch --user alice --cache-dir ./research-cache --pages 3
+xcrawler analyze interest --user alice --cache-dir ./research-cache --limit 100
 ```
 
-长期、多用户或频繁运行时，可以仅将 `analysis_runs` 和 `llm_calls` 元数据切换到 SQLite：
+`--user`、`--cache-dir` 只影响本次命令；后续操作需继续使用相同参数。分页数、批大小和分析条数使用 CLI 参数，不要假定存在同名环境变量。实际支持项以子命令 `--help` 为准。
+
+## Provider 与模型
+
+专业兴趣分析使用非空 `DEEPSEEK_API_KEY` 优先；仅其为空时选择 OpenAI 配置。这里的“备选”是启动时选择，不是请求失败后的自动切换。翻译、行为、情感和抓取后的聚类摘要仍使用 DeepSeek 兼容配置。
+
+仅切换专业兴趣分析的示例（macOS/Linux；服务地址和模型均为占位示例，请按所用服务填写完整 API 路径）：
 
 ```bash
-STORAGE_BACKEND=sqlite
-SQLITE_PATH=cache/xcrawler.db
+export DEEPSEEK_API_KEY=""
+export OPENAI_API_KEY="your_openai_key"
+export OPENAI_BASE_URL="https://your-provider.example/v1"
+# 替换成该服务实际支持的模型；本项目不提供模型可用性保证
+xcrawler analyze interest --model your_supported_model
 ```
 
-也可以仅对一次命令启用：
+之后执行翻译或行为分析前，恢复 DeepSeek 兼容配置。使用第三方兼容服务时需显式设置其地址、密钥和模型，文本将发送到该地址。
+
+可选成本配置示例（仅结构示意，0.0 不是供应商报价）：
+
+```dotenv
+LLM_PRICING_JSON={"deepseek-chat":{"input_per_million":0.0,"output_per_million":0.0}}
+```
+
+请自行填写当前服务报价；不配置时调用记录的成本为 `null`。批处理减少重复提示开销，费用还取决于文本长度、输出、重试和缓存命中，不保证固定倍数。
+
+## 翻译缓存与恢复
+
+翻译目标是中文。检测为中文的文本通常跳过模型翻译；清洗后的文本短于 6 字符会被跳过。清洗移除 URL、@提及并整理空白，译文记录的 `original` 因而不等于完整 API 原文。
+
+```bash
+# 普通同步：新增、失效或来源待验证的译文
+xcrawler translate
+
+# 显式强制：绕过旧缓存，重新翻译符合条件的文本
+xcrawler translate --force
+```
+
+- 缓存按 Provider、模型、目标语言、Prompt 版本及规范化服务地址身份隔离。服务地址身份包括协议、主机、端口和路径，不包括认证信息、查询参数或片段。
+- 默认端口和末尾斜杠归一化；切换服务或模型可能触发重翻。
+- 旧 `{原文: 译文}` 缓存留在 `legacy_entries` 供人工恢复，缺少来源信息的旧缓存不继续命中。
+- 译文缺少配置指纹、原文变化、配置变化或内容无效时会重新验证/翻译；成功前保留旧译文。首次升级迁移可能增加模型调用。
+- 抓取和普通同步按批保存成功译文到共享缓存。中断后使用相同配置重跑，可复用仍需翻译条目的成功结果；未完成批次可能再次调用模型。
+- 缓存保存失败会停止流程，不会因此重试模型调用。
+- **强制重翻不支持断点续跑。** 再带 `--force` 运行会从头重翻，可能重复收费。省略 `--force` 是普通同步：有效旧译文会被跳过，不会自动用新缓存替换它们。
+- 强制重翻的主译文文件仅在全部成功后提交；期间保存的共享缓存不是强制任务恢复记录。`fetch --replace` 同样不会因缓存检查点而提交部分快照。
+
+## 存储与并发
+
+默认 `JsonStore` 使用 `analysis_runs.json` 和 `llm_calls.json`。支持存储选项的命令可切换：
 
 ```bash
 xcrawler analyze interest --storage sqlite
 xcrawler analyze behavior --storage sqlite --sqlite-path state/xcrawler.db
 ```
 
-- SQLite 不接管原始推文、翻译、翻译缓存、图表或报告。
-- JSON 与 SQLite 不会自动迁移或合并；切换后只记录新运行。
-- 默认数据库路径是 `<cache-dir>/xcrawler.db`。
-- `*.db`、WAL 和 SHM 文件已加入 `.gitignore`，不要提交分析元数据。
+SQLite 使用结构化运行/调用表、索引、WAL、事务和 busy timeout；普通 Storage key 有 `json_documents` 兼容表。原始推文、译文、翻译缓存、向量缓存、图表和报告仍为文件。切换不自动迁移旧元数据，可通过 `query_analysis_runs()` 和 `query_llm_calls()` 查询数据库记录。
 
----
+调用记录包含状态、模型、token、耗时和错误等元数据，不专门保存 Prompt/响应正文字段；错误信息仍可能含服务返回内容，不应视为可公开的无敏感数据。
 
-## 📂 文件命名规则
+JSON 受管操作使用同名 `.lock` advisory lock，默认等待最多 5 秒。读写、备份恢复和追加操作在锁内进行；多文件操作按规范化路径顺序取锁。网络和模型请求在锁外，整个业务流程不是一个事务。
 
-所有数据文件都使用 `{username}_{类型}.json` 格式：
+归档和共享缓存保存时会在锁内重新读取最新文件并合并。翻译缓存只允许当前进程自上次成功保存后生成的键覆盖已有值；未修改的旧快照不能回滚其他进程的修正。同一键均生成新值时，以最后提交为准。显式快照仍遵循替换语义。
 
-```
-cache/
-├── MiracleHe_raw_tweets.json          # 原始推文
-├── MiracleHe_translated.json          # 翻译后的推文
-├── MiracleHe_analysis.json            # 行为分析
-├── MiracleHe_interest_profile.json   # 兴趣画像
-├── analysis_runs.json                # 分析任务级运行记录（多用户共享）
-├── llm_calls.json                    # LLM 调用级记录（多用户共享，不含正文）
-├── xcrawler.db                       # SQLite 模式下替代上述两个元数据 JSON
-└── translation_cache.json            # 翻译缓存（通用）
-```
+锁文件可保留复用，进程退出后操作系统释放实际锁；不要在运行时删除锁文件。SQLite 仅改变元数据存储，不会使普通文件工作流变为数据库事务。
 
-**好处：**
-- ✅ 可以同时分析多个用户
-- ✅ 数据不会互相覆盖
-- ✅ 一目了然知道是谁的数据
+## 文件保护与清理
 
----
+JSON 在同目录写临时文件后原子替换，覆盖时保留有效 `.bak`。读取可从有效备份恢复；主文件和备份均损坏时明确报错。新 POSIX 目录默认 `0700`、受管文件 `0600`，已有父目录仅提示，不自动改权。
 
-## 🚀 使用示例
-
-### 示例 1：分析单个用户
-
-```bash
-# 1. 修改 .env 或使用 --user 参数
-TARGET_USERNAME=MiracleHe
-
-# 2. 依次运行（统一 CLI）
-xcrawler fetch -u MiracleHe              # 抓取并翻译
-xcrawler analyze interest -u MiracleHe   # 兴趣画像分析
-xcrawler analyze behavior -u MiracleHe   # 行为分析
-```
-
----
-
-### 示例 2：分析多个用户
-
-```bash
-# 用户 A
-xcrawler fetch -u user_a
-xcrawler analyze interest -u user_a
-
-# 用户 B
-xcrawler fetch -u user_b
-xcrawler analyze interest -u user_b
-
-# 数据文件：
-# cache/user_a_*.json
-# cache/user_b_*.json
-```
-
----
-
-### 示例 3：临时切换用户
-
-```bash
-# 无需修改 .env，直接使用 --user 参数
-xcrawler fetch -u new_user
-xcrawler analyze interest -u new_user
-```
-
----
-
-## ⚙️ 所有支持配置的命令
-
-| 命令 | 功能 | 读取配置 |
-|------|------|---------|
-| `xcrawler fetch` | 抓取并翻译推文 | ✅ `TARGET_USERNAME` |
-| `xcrawler fetch-more` | 增量抓取历史数据 | ✅ `TARGET_USERNAME` |
-| `xcrawler analyze interest` | 兴趣画像分析 | ✅ `TARGET_USERNAME` |
-| `xcrawler analyze behavior` | 行为分析 | ✅ `TARGET_USERNAME` |
-| `xcrawler analyze sentiment` | 情感分析 | ✅ `TARGET_USERNAME` |
-| `xcrawler analyze network` | Hashtag/Mention 网络分析 | ✅ `TARGET_USERNAME` |
-
----
-
-## 🔒 默认值
-
-所有脚本都有默认值 `MiracleHe`，如果未设置 `TARGET_USERNAME`，会自动使用默认值：
-
-```python
-TARGET_USERNAME = os.getenv("TARGET_USERNAME", "MiracleHe")
-```
-
-**这意味着：**
-- ✅ 向后兼容，旧配置依然有效
-- ✅ 新用户可以直接修改 `.env`
-- ✅ 不会因为缺少配置而报错
-
----
-
-## 💡 最佳实践
-
-### 1. 长期使用：修改 `.env`
-```bash
-# .env
-TARGET_USERNAME=my_target_user
-```
-
-### 2. 临时测试：使用 `--user` 参数
-```bash
-xcrawler fetch -u test_user
-```
-
-### 3. 多用户分析
-```bash
-xcrawler fetch -u user1
-xcrawler fetch -u user2
-xcrawler fetch -u user3
-```
-
----
-
-## ⚠️ 注意事项
-
-1. **文件名冲突**
-   - 不同用户的数据会保存到不同文件
-   - `translation_cache.json` 是所有用户共享的翻译缓存
-
-2. **API 配额**
-   - 所有用户共享同一个 API 配额
-   - 注意不要短时间内抓取太多用户
-
-3. **数据备份**
-   - 切换用户前建议备份 `cache/` 目录
-   - 或者将旧数据移到 `cache_backup_{username}/`
-
----
-
-## 🎯 总结
-
-现在所有脚本都支持通过 `.env` 或 `--user` 参数配置用户名，复用性大大提高！
-
-**核心优势：**
-- ✅ 一次配置，全局生效
-- ✅ 支持多用户分析
-- ✅ 向后兼容
-- ✅ 灵活切换
-
-修改 `.env` 中的 `TARGET_USERNAME` 或使用 `xcrawler -u <用户名>` 即可开始使用！
+清理前停止进程，核对自定义目录、CSV/PNG/HTML、`.bak`、共享缓存、元数据、数据库及历史 `cache_backup/`。默认共享文件并非全部按用户名命名；删掉某个用户的主 JSON 不代表清除全部相关数据。不要把通配符删除示例当成可靠的按用户删除功能。
